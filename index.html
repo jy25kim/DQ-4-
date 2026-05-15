@@ -1,0 +1,2050 @@
+<!DOCTYPE html>
+<html lang="ko"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>근태 분석 대시보드</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif;background:#F2F3F7;color:#1A1A2E;font-size:14px}
+
+/* 상단 바 */
+.topbar{background:#1A1A2E;padding:14px 32px;display:flex;align-items:center;justify-content:space-between;gap:16px}
+.topbar-title{color:#fff;font-size:22px;font-weight:700;white-space:nowrap;letter-spacing:-.3px}
+.upload-zone-mini{display:flex;align-items:center;gap:10px;background:rgba(255,255,255,0.07);border:1.5px dashed rgba(255,255,255,0.25);border-radius:10px;padding:8px 16px;cursor:pointer;transition:all .2s;flex-shrink:0}
+.upload-zone-mini:hover,.upload-zone-mini.drag-over{background:rgba(57,73,171,0.3);border-color:#7986CB}
+.upload-zone-mini span{color:#9FA8C7;font-size:12px}
+.upload-zone-mini strong{color:#fff;font-size:12px}
+.upload-status{font-size:11px;color:#7986CB;white-space:nowrap}
+.upload-icon{font-size:18px}
+
+/* 드롭존 (초기 상태) */
+.drop-overlay{position:fixed;inset:0;background:#F2F3F7;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:100;transition:opacity .3s}
+.drop-overlay.hidden{opacity:0;pointer-events:none}
+.drop-box{width:480px;background:#fff;border-radius:20px;padding:52px 40px;text-align:center;border:2.5px dashed #C5CAE9;transition:all .2s;box-shadow:0 8px 40px rgba(26,26,46,0.08)}
+.drop-box.drag-over{border-color:#3949AB;background:#F0F2FF;transform:scale(1.01)}
+.drop-icon{font-size:52px;margin-bottom:20px}
+.drop-title{font-size:22px;font-weight:700;color:#1A1A2E;margin-bottom:8px}
+.drop-sub{font-size:13px;color:#888;margin-bottom:28px;line-height:1.6}
+.drop-btn{display:inline-block;background:#3949AB;color:#fff;font-size:13px;font-weight:600;padding:12px 28px;border-radius:10px;cursor:pointer;border:none;font-family:inherit;transition:background .15s}
+.drop-btn:hover{background:#2c3a8c}
+.drop-hint{font-size:11px;color:#BBB;margin-top:16px}
+.drop-req{background:#F8F9FF;border-radius:10px;padding:14px 18px;margin-top:20px;text-align:left;font-size:12px;color:#555;line-height:2}
+.drop-req strong{color:#3949AB}
+
+/* 전체 화면 드래그 오버레이 */
+.global-drop{position:fixed;inset:0;background:rgba(57,73,171,0.12);border:4px dashed #3949AB;z-index:999;display:none;align-items:center;justify-content:center;backdrop-filter:blur(2px)}
+.global-drop.active{display:flex}
+.global-drop-msg{background:#fff;border-radius:16px;padding:32px 48px;font-size:18px;font-weight:700;color:#3949AB;box-shadow:0 8px 40px rgba(57,73,171,0.2)}
+
+/* 탭 */
+.tabs{background:#fff;border-bottom:1px solid #E0E0E8;display:flex;padding:0 28px}
+.tab{padding:13px 20px;font-size:13px;font-weight:500;color:#888;cursor:pointer;border-bottom:2px solid transparent;transition:all .15s;white-space:nowrap}
+.tab.active{color:#3949AB;border-bottom-color:#3949AB;font-weight:700}
+.main{max-width:1200px;margin:0 auto;padding:22px 20px}
+.page{display:none}.page.active{display:block}
+
+/* Summary */
+.summary-box{background:#fff;border-radius:12px;padding:18px 22px;border:1px solid #E8EAF0;margin-bottom:18px}
+.summary-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.summary-label{font-size:12px;font-weight:700;color:#3949AB;display:flex;align-items:center;gap:6px}
+.summary-label::before{content:'✏️';font-size:13px}
+.summary-actions{display:flex;gap:8px;align-items:center}
+.summary-month{font-size:12px;padding:4px 10px;border-radius:7px;border:1px solid #E0E0E8;background:#fff;color:#1A1A2E;font-family:inherit}
+.summary-month:focus{outline:none;border-color:#3949AB}
+.summary-save-btn{font-size:11px;padding:5px 12px;border-radius:6px;border:none;background:#3949AB;color:#fff;cursor:pointer}
+.summary-save-btn:hover{background:#2c3a8c}
+.summary-save-btn.saved{background:#1D9E75}
+.summary-textarea{width:100%;border:1px solid #E8EAF0;border-radius:8px;padding:12px 14px;font-size:13px;font-family:inherit;resize:vertical;color:#1A1A2E;background:#FAFBFF;line-height:1.7;min-height:90px}
+.summary-textarea:focus{outline:none;border-color:#3949AB;background:#fff}
+.summary-textarea::placeholder{color:#BEC5D4}
+
+/* KPI */
+.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}
+.kpi{background:#fff;border-radius:12px;padding:17px 18px;border:1px solid #E8EAF0}
+.kpi-label{font-size:10.5px;font-weight:700;color:#999;letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px}
+.kpi-value{font-size:25px;font-weight:700;color:#1A1A2E;letter-spacing:-.5px}
+.kpi-unit{font-size:13px;font-weight:400;color:#BBB;margin-left:1px}
+.kpi-sub{font-size:11px;color:#AAA;margin-top:3px}
+.kpi-badge{display:inline-block;font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:20px;margin-top:5px}
+.bw{background:#FDECEA;color:#C0392B}.bo{background:#E8F5E9;color:#1B7A3E}.bn{background:#EEF2FF;color:#3949AB}.by{background:#FFF8E1;color:#856404}
+
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px}
+.card{background:#fff;border-radius:12px;padding:18px 20px;border:1px solid #E8EAF0}
+.full-card{background:#fff;border-radius:12px;padding:18px 20px;border:1px solid #E8EAF0;margin-bottom:16px}
+.card-title{font-size:13px;font-weight:700;color:#1A1A2E;margin-bottom:14px}
+.legend{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:10px}
+.li{display:flex;align-items:center;gap:5px;font-size:11px;color:#666}
+.ld{width:10px;height:10px;border-radius:2px;flex-shrink:0}
+
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+thead th{padding:7px 10px;text-align:left;font-size:10px;font-weight:700;color:#888;letter-spacing:.05em;text-transform:uppercase;border-bottom:1px solid #EAECF0;white-space:nowrap}
+tbody tr{border-bottom:1px solid #F4F4F8}tbody tr:hover{background:#F8F9FF}tbody tr:last-child{border-bottom:none}
+tbody td{padding:8px 10px;color:#1A1A2E;vertical-align:middle;white-space:nowrap}
+.num{text-align:right;font-variant-numeric:tabular-nums}.ctr{text-align:center}
+.chip{display:inline-block;font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px}
+.ca{background:#E8F5E9;color:#1B7A3E}.cb{background:#F3EEF9;color:#7B2D8B}
+.cc{background:#FEF0EB;color:#B94520}.cd{background:#EBF4FF;color:#1A5FA8}.ce{background:#F5F5F5;color:#555}
+.cl{background:#FFF8E1;color:#856404}.cm{background:#F0F4FF;color:#3949AB}
+.warn-ot{color:#C0392B;font-weight:700}.hi-d{color:#D85A30;font-weight:700}
+
+/* 미준수 뱃지 */
+.vbadge{display:inline-block;font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;white-space:nowrap}
+.vbadge-late{background:#FFF0EE;color:#C0392B}.vbadge-early{background:#EEF2FF;color:#3949AB}
+
+/* 필터 */
+.filter-bar{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;align-items:center}
+.filter-bar select,.filter-bar input{font-size:12px;padding:5px 10px;border-radius:7px;border:1px solid #E0E0E8;background:#fff;color:#1A1A2E;font-family:inherit}
+.filter-bar select:focus,.filter-bar input:focus{outline:none;border-color:#3949AB}
+.filter-bar label{font-size:11px;color:#888;font-weight:600}
+.filter-reset{font-size:11px;padding:5px 10px;border-radius:7px;border:1px solid #ddd;background:#fff;color:#888;cursor:pointer}
+
+/* 사유 입력 */
+.reason-input{width:100%;border:1px solid #E0E0E8;border-radius:6px;padding:4px 8px;font-size:12px;font-family:inherit;resize:none;color:#1A1A2E;background:#fff;min-width:130px}
+.reason-input:focus{outline:none;border-color:#3949AB}
+.reason-input.saved{border-color:#1D9E75;background:#F0FBF5}
+.save-btn{font-size:10px;padding:3px 8px;border-radius:5px;border:none;background:#3949AB;color:#fff;cursor:pointer;margin-left:4px;white-space:nowrap}
+.save-btn:hover{background:#2c3a8c}
+
+/* 로딩 */
+.loading-bar{height:3px;background:linear-gradient(90deg,#3949AB,#7986CB,#3949AB);background-size:200% 100%;animation:loading 1.2s linear infinite;border-radius:2px;margin-bottom:16px;display:none}
+.loading-bar.active{display:block}
+@keyframes loading{0%{background-position:200% 0}100%{background-position:-200% 0}}
+
+.footer{text-align:center;padding:18px;color:#CCC;font-size:11px}
+#fileInput{display:none}
+</style>
+<script id="static-data-injection">
+/* 정적 내보내기: 집계 데이터 내장 */
+window.__STATIC_MODE__ = true;
+window.__STATIC_DATA__ = {"MONTHS":["2025-12","2026-01","2026-02","2026-03","2026-04"],"totalArr":[{"월":"2025-12","인원":14,"일평균":8.15,"인당연장":3.24,"인당휴가":0.71},{"월":"2026-01","인원":19,"일평균":8.22,"인당연장":3.36,"인당휴가":0.89},{"월":"2026-02","인원":20,"일평균":8.34,"인당연장":5.85,"인당휴가":0.53},{"월":"2026-03","인원":21,"일평균":8.36,"인당연장":8.03,"인당휴가":0.98},{"월":"2026-04","인원":21,"일평균":8.38,"인당연장":12.9,"인당휴가":0.83}],"orgArr":[{"조직":"경영지원팀","월":"2026-02","인원":1,"근무일합":17,"조정합":8164,"연장합":4,"휴가합":1,"일평균":8,"인당연장":0.07,"인당휴가":1},{"조직":"경영지원팀","월":"2026-03","인원":1,"근무일합":21,"조정합":10116,"연장합":36,"휴가합":0,"일평균":8.03,"인당연장":0.6,"인당휴가":0},{"조직":"경영지원팀","월":"2026-04","인원":1,"근무일합":22,"조정합":10332,"연장합":48,"휴가합":1.5,"일평균":7.83,"인당연장":0.8,"인당휴가":1.5},{"조직":"기획팀","월":"2025-12","인원":2,"근무일합":42,"조정합":20258,"연장합":0,"휴가합":1.5,"일평균":8.04,"인당연장":0.82,"인당휴가":0.75},{"조직":"기획팀","월":"2026-01","인원":3,"근무일합":47,"조정합":23280,"연장합":0,"휴가합":3.5,"일평균":8.26,"인당연장":3.69,"인당휴가":1.17},{"조직":"기획팀","월":"2026-02","인원":3,"근무일합":51,"조정합":26455,"연장합":1975,"휴가합":3,"일평균":8.65,"인당연장":10.97,"인당휴가":1},{"조직":"기획팀","월":"2026-03","인원":4,"근무일합":84,"조정합":44507,"연장합":4187,"휴가합":1.5,"일평균":8.83,"인당연장":17.45,"인당휴가":0.38},{"조직":"기획팀","월":"2026-04","인원":4,"근무일합":88,"조정합":45360,"연장합":4224,"휴가합":4.5,"일평균":8.59,"인당연장":17.6,"인당휴가":1.13},{"조직":"아트앤테크팀","월":"2025-12","인원":2,"근무일합":42,"조정합":21494,"연장합":0,"휴가합":1.5,"일평균":8.53,"인당연장":11.12,"인당휴가":0.75},{"조직":"아트앤테크팀","월":"2026-01","인원":3,"근무일합":47,"조정합":23894,"연장합":0,"휴가합":3,"일평균":8.47,"인당연장":7.46,"인당휴가":1},{"조직":"아트앤테크팀","월":"2026-02","인원":3,"근무일합":51,"조정합":25950,"연장합":1470,"휴가합":2.5,"일평균":8.48,"인당연장":8.17,"인당휴가":0.83},{"조직":"아트앤테크팀","월":"2026-03","인원":3,"근무일합":63,"조정합":32959,"연장합":2719,"휴가합":4.5,"일평균":8.72,"인당연장":15.11,"인당휴가":1.5},{"조직":"아트앤테크팀","월":"2026-04","인원":3,"근무일합":66,"조정합":35663,"연장합":4811,"휴가합":3,"일평균":9.01,"인당연장":26.73,"인당휴가":1},{"조직":"아트팀","월":"2025-12","인원":4,"근무일합":84,"조정합":40951,"연장합":0,"휴가합":5,"일평균":8.13,"인당연장":2.63,"인당휴가":1.25},{"조직":"아트팀","월":"2026-01","인원":4,"근무일합":84,"조정합":40800,"연장합":0,"휴가합":5,"일평균":8.1,"인당연장":2,"인당휴가":1.25},{"조직":"아트팀","월":"2026-02","인원":4,"근무일합":68,"조정합":32963,"연장합":323,"휴가합":1.5,"일평균":8.08,"인당연장":1.35,"인당휴가":0.38},{"조직":"아트팀","월":"2026-03","인원":4,"근무일합":84,"조정합":41587,"연장합":1267,"휴가합":7.5,"일평균":8.25,"인당연장":5.28,"인당휴가":1.88},{"조직":"아트팀","월":"2026-04","인원":4,"근무일합":88,"조정합":43403,"연장합":2267,"휴가합":4.5,"일평균":8.22,"인당연장":9.45,"인당휴가":1.13},{"조직":"프로그램팀","월":"2025-12","인원":6,"근무일합":126,"조정합":61139,"연장합":0,"휴가합":2,"일평균":8.09,"인당연장":1.83,"인당휴가":0.33},{"조직":"프로그램팀","월":"2026-01","인원":9,"근무일합":141,"조정합":69271,"연장합":0,"휴가합":5.5,"일평균":8.19,"인당연장":2.48,"인당휴가":0.61},{"조직":"프로그램팀","월":"2026-02","인원":9,"근무일합":153,"조정합":76693,"연장합":3253,"휴가합":2.5,"일평균":8.35,"인당연장":6.02,"인당휴가":0.28},{"조직":"프로그램팀","월":"2026-03","인원":9,"근무일합":189,"조정합":92165,"연장합":1908,"휴가합":7,"일평균":8.13,"인당연장":3.53,"인당휴가":0.78},{"조직":"프로그램팀","월":"2026-04","인원":9,"근무일합":185,"조정합":90951,"연장합":4905,"휴가합":4,"일평균":8.19,"인당연장":9.08,"인당휴가":0.44}],"posArr":[{"직책":"팀원","월":"2025-12","인원":10,"근무일합":210,"조정합":101894,"연장합":0,"휴가합":7.5,"일평균":8.09,"인당연장":1.82,"인당휴가":0.75},{"직책":"팀원","월":"2026-01","인원":15,"근무일합":235,"조정합":114514,"연장합":0,"휴가합":12,"일평균":8.12,"인당연장":1.57,"인당휴가":0.8},{"직책":"팀원","월":"2026-02","인원":16,"근무일합":272,"조정합":133465,"연장합":2905,"휴가합":9.5,"일평균":8.18,"인당연장":3.03,"인당휴가":0.59},{"직책":"팀원","월":"2026-03","인원":17,"근무일합":357,"조정합":176718,"연장합":5821,"휴가합":14,"일평균":8.25,"인당연장":5.71,"인당휴가":0.82},{"직책":"팀원","월":"2026-04","인원":17,"근무일합":361,"조정합":177166,"연장합":8848,"휴가합":14,"일평균":8.18,"인당연장":8.67,"인당휴가":0.82},{"직책":"팀장","월":"2025-12","인원":4,"근무일합":84,"조정합":41948,"연장합":0,"휴가합":2.5,"일평균":8.32,"인당연장":6.78,"인당휴가":0.63},{"직책":"팀장","월":"2026-01","인원":4,"근무일합":84,"조정합":42731,"연장합":0,"휴가합":5,"일평균":8.48,"인당연장":10.05,"인당휴가":1.25},{"직책":"팀장","월":"2026-02","인원":4,"근무일합":68,"조정합":36760,"연장합":4120,"휴가합":1,"일평균":9.01,"인당연장":17.17,"인당휴가":0.25},{"직책":"팀장","월":"2026-03","인원":4,"근무일합":84,"조정합":44616,"연장합":4296,"휴가합":6.5,"일평균":8.85,"인당연장":17.9,"인당휴가":1.63},{"직책":"팀장","월":"2026-04","인원":4,"근무일합":88,"조정합":48543,"연장합":7407,"휴가합":3.5,"일평균":9.19,"인당연장":30.86,"인당휴가":0.88}],"orgs":["경영지원팀","기획팀","아트앤테크팀","아트팀","프로그램팀"],"poses":["팀원","팀장"],"anomaly":[{"이름":"김석규","조직":"기획팀","직책":"팀장","월":"2026-04","날짜":"2026-04-06T00:00:00.000Z","dd":"04-06","휴일구분":"","휴가정책":"","시작시각":"10:01","종료시각":"19:29","총근무":508,"휴가시간":0,"연장":0,"연장법정":0,"주기연장법정":0,"hasVac":false,"조정근무":508,"근무일":1,"연장합산":0,"휴가개수":0,"late":1,"early":0},{"이름":"김태연","조직":"아트앤테크팀","직책":"팀원","월":"2026-04","날짜":"2026-04-20T00:00:00.000Z","dd":"04-20","휴일구분":"","휴가정책":"","시작시각":"10:11","종료시각":"23:13","총근무":692,"휴가시간":0,"연장":0,"연장법정":0,"주기연장법정":0,"hasVac":false,"조정근무":692,"근무일":1,"연장합산":0,"휴가개수":0,"late":11,"early":0},{"이름":"김훈","조직":"아트팀","직책":"팀장","월":"2026-04","날짜":"2026-04-23T00:00:00.000Z","dd":"04-23","휴일구분":"","휴가정책":"","시작시각":"11:04","종료시각":"22:05","총근무":601,"휴가시간":0,"연장":0,"연장법정":0,"주기연장법정":0,"hasVac":false,"조정근무":601,"근무일":1,"연장합산":0,"휴가개수":0,"late":64,"early":0},{"이름":"박한웅","조직":"프로그램팀","직책":"팀원","월":"2026-04","날짜":"2026-04-09T00:00:00.000Z","dd":"04-09","휴일구분":"","휴가정책":"","시작시각":"09:27","종료시각":"16:59","총근무":392,"휴가시간":0,"연장":0,"연장법정":0,"주기연장법정":0,"hasVac":false,"조정근무":392,"근무일":1,"연장합산":0,"휴가개수":0,"late":0,"early":1},{"이름":"한정연","조직":"기획팀","직책":"팀원","월":"2026-04","날짜":"2026-04-06T00:00:00.000Z","dd":"04-06","휴일구분":"","휴가정책":"","시작시각":"10:01","종료시각":"20:35","총근무":574,"휴가시간":0,"연장":0,"연장법정":0,"주기연장법정":0,"hasVac":false,"조정근무":574,"근무일":1,"연장합산":0,"휴가개수":0,"late":1,"early":0},{"이름":"한정연","조직":"기획팀","직책":"팀원","월":"2026-04","날짜":"2026-04-10T00:00:00.000Z","dd":"04-10","휴일구분":"","휴가정책":"","시작시각":"10:01","종료시각":"19:49","총근무":528,"휴가시간":0,"연장":0,"연장법정":0,"주기연장법정":0,"hasVac":false,"조정근무":528,"근무일":1,"연장합산":0,"휴가개수":0,"late":1,"early":0},{"이름":"한정연","조직":"기획팀","직책":"팀원","월":"2026-04","날짜":"2026-04-20T00:00:00.000Z","dd":"04-20","휴일구분":"","휴가정책":"","시작시각":"10:25","종료시각":"20:44","총근무":559,"휴가시간":0,"연장":0,"연장법정":0,"주기연장법정":0,"hasVac":false,"조정근무":559,"근무일":1,"연장합산":0,"휴가개수":0,"late":25,"early":0},{"이름":"한정연","조직":"기획팀","직책":"팀원","월":"2026-04","날짜":"2026-04-21T00:00:00.000Z","dd":"04-21","휴일구분":"","휴가정책":"","시작시각":"10:09","종료시각":"19:56","총근무":527,"휴가시간":0,"연장":0,"연장법정":0,"주기연장법정":0,"hasVac":false,"조정근무":527,"근무일":1,"연장합산":0,"휴가개수":0,"late":9,"early":0},{"이름":"한정연","조직":"기획팀","직책":"팀원","월":"2026-04","날짜":"2026-04-22T00:00:00.000Z","dd":"04-22","휴일구분":"","휴가정책":"","시작시각":"11:01","종료시각":"20:15","총근무":494,"휴가시간":0,"연장":0,"연장법정":0,"주기연장법정":0,"hasVac":false,"조정근무":494,"근무일":1,"연장합산":0,"휴가개수":0,"late":61,"early":0},{"이름":"한정연","조직":"기획팀","직책":"팀원","월":"2026-04","날짜":"2026-04-23T00:00:00.000Z","dd":"04-23","휴일구분":"","휴가정책":"","시작시각":"10:05","종료시각":"19:28","총근무":503,"휴가시간":0,"연장":0,"연장법정":0,"주기연장법정":0,"hasVac":false,"조정근무":503,"근무일":1,"연장합산":0,"휴가개수":0,"late":5,"early":0},{"이름":"한정연","조직":"기획팀","직책":"팀원","월":"2026-04","날짜":"2026-04-30T00:00:00.000Z","dd":"04-30","휴일구분":"","휴가정책":"","시작시각":"10:03","종료시각":"18:59","총근무":476,"휴가시간":0,"연장":162,"연장법정":314,"주기연장법정":0,"hasVac":false,"조정근무":476,"근무일":1,"연장합산":476,"휴가개수":0,"late":3,"early":0},{"이름":"국중원","조직":"아트앤테크팀","직책":"팀장","월":"2026-03","날짜":"2026-03-17T00:00:00.000Z","dd":"03-17","휴일구분":"","휴가정책":"","시작시각":"10:03","종료시각":"18:27","총근무":444,"휴가시간":0,"연장":0,"연장법정":0,"주기연장법정":0,"hasVac":false,"조정근무":444,"근무일":1,"연장합산":0,"휴가개수":0,"late":3,"early":0},{"이름":"김태연","조직":"아트앤테크팀","직책":"팀원","월":"2026-03","날짜":"2026-03-23T00:00:00.000Z","dd":"03-23","휴일구분":"","휴가정책":"","시작시각":"10:04","종료시각":"23:05","총근무":676,"휴가시간":0,"연장":0,"연장법정":0,"주기연장법정":0,"hasVac":false,"조정근무":676,"근무일":1,"연장합산":0,"휴가개수":0,"late":4,"early":0},{"이름":"이하은","조직":"프로그램팀","직책":"팀원","월":"2026-03","날짜":"2026-03-18T00:00:00.000Z","dd":"03-18","휴일구분":"","휴가정책":"","시작시각":"10:02","종료시각":"19:13","총근무":491,"휴가시간":0,"연장":0,"연장법정":0,"주기연장법정":0,"hasVac":false,"조정근무":491,"근무일":1,"연장합산":0,"휴가개수":0,"late":2,"early":0},{"이름":"이하은","조직":"프로그램팀","직책":"팀원","월":"2026-03","날짜":"2026-03-27T00:00:00.000Z","dd":"03-27","휴일구분":"","휴가정책":"","시작시각":"09:58","종료시각":"12:35","총근무":152,"휴가시간":0,"연장":0,"연장법정":0,"주기연장법정":0,"hasVac":false,"조정근무":152,"근무일":1,"연장합산":0,"휴가개수":0,"late":0,"early":265},{"이름":"한정연","조직":"기획팀","직책":"팀원","월":"2026-03","날짜":"2026-03-06T00:00:00.000Z","dd":"03-06","휴일구분":"","휴가정책":"","시작시각":"10:04","종료시각":"20:21","총근무":557,"휴가시간":0,"연장":0,"연장법정":0,"주기연장법정":0,"hasVac":false,"조정근무":557,"근무일":1,"연장합산":0,"휴가개수":0,"late":4,"early":0},{"이름":"한정연","조직":"기획팀","직책":"팀원","월":"2026-03","날짜":"2026-03-10T00:00:00.000Z","dd":"03-10","휴일구분":"","휴가정책":"","시작시각":"10:09","종료시각":"19:12","총근무":483,"휴가시간":0,"연장":0,"연장법정":0,"주기연장법정":0,"hasVac":false,"조정근무":483,"근무일":1,"연장합산":0,"휴가개수":0,"late":9,"early":0},{"이름":"김훈","조직":"아트팀","직책":"팀장","월":"2026-02","날짜":"2026-02-26T00:00:00.000Z","dd":"02-26","휴일구분":"","휴가정책":"","시작시각":"10:09","종료시각":"18:42","총근무":453,"휴가시간":0,"연장":0,"연장법정":0,"주기연장법정":0,"hasVac":false,"조정근무":453,"근무일":1,"연장합산":0,"휴가개수":0,"late":9,"early":0},{"이름":"김태연","조직":"아트앤테크팀","직책":"팀원","월":"2026-01","날짜":"2026-01-13T00:00:00.000Z","dd":"01-13","휴일구분":"","휴가정책":"","시작시각":"10:08","종료시각":"17:49","총근무":401,"휴가시간":0,"연장":0,"연장법정":0,"주기연장법정":0,"hasVac":false,"조정근무":401,"근무일":1,"연장합산":0,"휴가개수":0,"late":8,"early":0},{"이름":"김태연","조직":"아트앤테크팀","직책":"팀원","월":"2026-01","날짜":"2026-01-28T00:00:00.000Z","dd":"01-28","휴일구분":"","휴가정책":"","시작시각":"10:10","종료시각":"18:39","총근무":449,"휴가시간":0,"연장":0,"연장법정":0,"주기연장법정":0,"hasVac":false,"조정근무":449,"근무일":1,"연장합산":0,"휴가개수":0,"late":10,"early":0},{"이름":"강동준","조직":"프로그램팀","직책":"팀원","월":"2025-12","날짜":"2025-12-05T00:00:00.000Z","dd":"12-05","휴일구분":"","휴가정책":"","시작시각":"11:37","종료시각":"17:50","총근무":313,"휴가시간":0,"연장":0,"연장법정":0,"주기연장법정":0,"hasVac":false,"조정근무":313,"근무일":1,"연장합산":0,"휴가개수":0,"late":97,"early":0},{"이름":"국중원","조직":"아트앤테크팀","직책":"팀장","월":"2025-12","날짜":"2025-12-05T00:00:00.000Z","dd":"12-05","휴일구분":"","휴가정책":"","시작시각":"11:05","종료시각":"20:28","총근무":503,"휴가시간":0,"연장":0,"연장법정":0,"주기연장법정":0,"hasVac":false,"조정근무":503,"근무일":1,"연장합산":0,"휴가개수":0,"late":65,"early":0},{"이름":"김시욱","조직":"아트팀","직책":"팀원","월":"2025-12","날짜":"2025-12-05T00:00:00.000Z","dd":"12-05","휴일구분":"","휴가정책":"","시작시각":"11:42","종료시각":"18:56","총근무":374,"휴가시간":0,"연장":0,"연장법정":0,"주기연장법정":0,"hasVac":false,"조정근무":374,"근무일":1,"연장합산":0,"휴가개수":0,"late":102,"early":0},{"이름":"김훈","조직":"아트팀","직책":"팀장","월":"2025-12","날짜":"2025-12-05T00:00:00.000Z","dd":"12-05","휴일구분":"","휴가정책":"","시작시각":"11:54","종료시각":"18:56","총근무":362,"휴가시간":0,"연장":0,"연장법정":0,"주기연장법정":0,"hasVac":false,"조정근무":362,"근무일":1,"연장합산":0,"휴가개수":0,"late":114,"early":0},{"이름":"김훈","조직":"아트팀","직책":"팀장","월":"2025-12","날짜":"2025-12-31T00:00:00.000Z","dd":"12-31","휴일구분":"","휴가정책":"","시작시각":"06:44","종료시각":"16:59","총근무":555,"휴가시간":0,"연장":0,"연장법정":0,"주기연장법정":538,"hasVac":false,"조정근무":555,"근무일":1,"연장합산":0,"휴가개수":0,"late":0,"early":1},{"이름":"박한웅","조직":"프로그램팀","직책":"팀원","월":"2025-12","날짜":"2025-12-05T00:00:00.000Z","dd":"12-05","휴일구분":"","휴가정책":"","시작시각":"10:06","종료시각":"18:27","총근무":441,"휴가시간":0,"연장":0,"연장법정":0,"주기연장법정":0,"hasVac":false,"조정근무":441,"근무일":1,"연장합산":0,"휴가개수":0,"late":6,"early":0},{"이름":"신휘재","조직":"프로그램팀","직책":"팀장","월":"2025-12","날짜":"2025-12-05T00:00:00.000Z","dd":"12-05","휴일구분":"","휴가정책":"","시작시각":"10:08","종료시각":"19:24","총근무":496,"휴가시간":0,"연장":0,"연장법정":0,"주기연장법정":0,"hasVac":false,"조정근무":496,"근무일":1,"연장합산":0,"휴가개수":0,"late":8,"early":0},{"이름":"유예진","조직":"아트팀","직책":"팀원","월":"2025-12","날짜":"2025-12-05T00:00:00.000Z","dd":"12-05","휴일구분":"","휴가정책":"","시작시각":"11:00","종료시각":"18:37","총근무":397,"휴가시간":0,"연장":0,"연장법정":0,"주기연장법정":0,"hasVac":false,"조정근무":397,"근무일":1,"연장합산":0,"휴가개수":0,"late":60,"early":0},{"이름":"이하은","조직":"프로그램팀","직책":"팀원","월":"2025-12","날짜":"2025-12-02T00:00:00.000Z","dd":"12-02","휴일구분":"","휴가정책":"","시작시각":"10:03","종료시각":"19:06","총근무":483,"휴가시간":0,"연장":0,"연장법정":0,"주기연장법정":0,"hasVac":false,"조정근무":483,"근무일":1,"연장합산":0,"휴가개수":0,"late":3,"early":0},{"이름":"전재경","조직":"프로그램팀","직책":"팀원","월":"2025-12","날짜":"2025-12-05T00:00:00.000Z","dd":"12-05","휴일구분":"","휴가정책":"","시작시각":"11:41","종료시각":"18:56","총근무":375,"휴가시간":0,"연장":0,"연장법정":0,"주기연장법정":0,"hasVac":false,"조정근무":375,"근무일":1,"연장합산":0,"휴가개수":0,"late":101,"early":0},{"이름":"정의혁","조직":"아트팀","직책":"팀원","월":"2025-12","날짜":"2025-12-05T00:00:00.000Z","dd":"12-05","휴일구분":"","휴가정책":"","시작시각":"11:00","종료시각":"18:30","총근무":390,"휴가시간":0,"연장":0,"연장법정":0,"주기연장법정":0,"hasVac":false,"조정근무":390,"근무일":1,"연장합산":0,"휴가개수":0,"late":60,"early":0}]};
+window.__COST_DATA__   = {"ot":{"기획팀":[0,0,0,0,0],"아트앤테크팀":[0,0,0,0,0],"아트팀":[0,0,19600,0,0],"프로그램팀":[0,0,0,0,0],"경영지원팀":[0,0,0,0,0]},"common":{"used":[230000,0,813129,167272,712739],"budget":[null,980000,2380000,3036871,4269599],"balance":[null,980000,1566871,2869599,3556860],"byOrg":{"기획팀":[0,0,240911,167272,210914],"아트앤테크팀":[0,0,0,0,0],"아트팀":[120000,0,258181,0,501825],"프로그램팀":[110000,0,248182,0,0],"경영지원팀":[0,0,65855,0,0]}},"cafe":{"법인카드 결제":[0,1234395,678137,817146,426799],"커피(렌탈,원두)":[0,1090550,0,1111100,0]},"asset":{"기획팀":[0,0,0,0,0],"아트앤테크팀":[0,0,0,0,0],"아트팀":[0,0,0,0,0],"프로그램팀":[0,0,0,0,19950000],"경영지원팀":[0,0,0,0,2755400],"기타":[0,0,0,0,7920400]},"teamSummary":{"기획팀":{"asset":0,"ot":0,"common":210914},"아트앤테크팀":{"asset":0,"ot":0,"common":0},"아트팀":{"asset":0,"ot":0,"common":501825},"프로그램팀":{"asset":19950000,"ot":0,"common":0},"경영지원팀":{"asset":2755400,"ot":0,"common":0},"기타":{"asset":7920400,"ot":0,"common":0}}};
+window.__COST_MONTHS__ = ["25.12월","26.1월","26.2월","26.3월","26.4월"];
+window.__SUMMARIES__   = {"2026-04":"- 일평균 근로시간은 전월 대비 2분 증가하였으며, 전반적으로 완만한 상승 추세를 유지하고 있음.\n- 조직별로는 기획팀과 아트앤테크팀의 근로시간이 상대적으로 높게 나타남.\n기획팀은 TF 체제 전환에 따른 사전 준비와 프로토타입 코어 시스템 설계가 병행된 영향이며, 아트앤테크팀은 보고용 샘플 캐릭터 마무리 작업 집중에 따른 영향으로 보임\n- 직책별로는 팀장 직책의 연장 근로시간이 전월 대비 큰 폭으로 증가함.\n- 코어타임 미준수 사례는 대부분 10분 미만 수준이며, 그 외 사례는 지각 또는 개인사정에 따른 것으로 확인함."};
+window.__REASONS__     = {"강동준_2025-12_12-05":"폭설로 인한 출근시간 내부조정","국중원_2025-12_12-05":"폭설로 인한 출근시간 내부조정","김시욱_2025-12_12-05":"폭설로 인한 출근시간 내부조정","김훈_2025-12_12-05":"폭설로 인한 출근시간 내부조정","박한웅_2025-12_12-05":"폭설로 인한 출근시간 내부조정","신휘재_2025-12_12-05":"폭설로 인한 출근시간 내부조정","유예진_2025-12_12-05":"폭설로 인한 출근시간 내부조정","전재경_2025-12_12-05":"폭설로 인한 출근시간 내부조정","정의혁_2025-12_12-05":"폭설로 인한 출근시간 내부조정","한정연_2026-04_04-22":"개인사유 (팀 사전공유O)","김태연_2026-04_04-20":"지각","김훈_2026-04_04-23":"지각","한정연_2026-04_04-20":"지각"};
+</script></head>
+<body>
+
+<!-- 전체 화면 드래그 오버레이 -->
+
+
+<!-- 초기 드롭존 -->
+
+
+<!-- 상단 바 -->
+<div class="topbar" id="topbar" style="display: flex;">
+  <div style="display:flex;align-items:center;gap:14px">
+    <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAooAAAKKCAYAAAC6dHqMAAA7RklEQVR4nO3dd7w1XUEf+t95X4oUeQFpiggWVEAx9oaIJSpWFOxXg/V6JVa89hIj2BvG6A03JraYGK8XLFgjdhMxogF7rCgiCIiCIhrekz/mDM8886zZdWbPmtnf7+dzPrucc2bWnj3lN2tmrXVxeXkZAADou2nuAgAAUCdBEQCAIkERAIAiQREAgCJBEQCAIkERAIAiQREAgCJBEQCAIkERAIAiQREAgCJBEQCAIkERAIAiQREAgCJBEQCAIkERAIAiQREAgCJBEQCAIkERAIAiQREAgCJBEQCAIkERAIAiQREAgCJBEQCAIkERAIAiQREAgCJBEQCAIkERAIAiQREAgCJBEQCAIkERAIAiQREAgCJBEQCAIkERAIAiQREAgCJBEQCAIkERAIAiQREAgCJBEQCAIkERAIAiQREAgCJBEQCAIkERAIAiQREAgCJBEQCAIkERAIAiQREAgCJBEQCAIkERAIAiQREAgCJBEQCAIkERAIAiQREAgCJBEQCAIkERAIAiQREAgCJBEQCAIkERAIAiQREAgCJBEQCAIkERAIAiQREAgCJBEQCAIkERAIAiQREAgCJBEQCAIkERAIAiQREAgCJBEQCAIkERAIAiQREAgCJBEQCAIkERAIAiQREAgCJBEQCAIkERAIAiQREAgCJBEQCAIkERAIAiQREAgCJBEQCAIkERAIAiQREAgCJBEQCAIkERAIAiQREAgCJBEQCAIkERAIAiQREAgCJBEQCAIkERAIAiQREAgCJBEQCAIkERAIAiQREAgCJBEQCAIkERAIAiQREAgCJBEQCAIkERAIAiQREAgCJBEQCAIkERAIAiQREAgCJBEQCAIkERAIAiQREAgCJBEQCAIkERAIAiQREAgCJBEQCAIkERAIAiQREAgCJBEQCAIkERAIAiQREAgCJBEQCAIkERAIAiQREAgCJBEQCAIkERAIAiQREAgCJBEQCAIkERAIAiQREAgCJBEQCAIkERAIAiQREAgCJBEQCAIkERAIAiQREAgCJBEQCAIkERAIAiQREAgCJBEQCAIkERAIAiQREAgCJBEQCAIkERAIAiQREAgCJBEQCAIkERAIAiQREAgCJBEQCAIkERAIAiQREAgCJBEQCAIkERAIAiQREAgCJBEQCA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nkvPwBq0l4q73eW0r7fp/087PSEROHuCIrAGlwPPd1EKhUIiQARFAKEQYICgCABAkaAIAECRoAgAQJGgCABAkaAIAECRoAgAQJGgCABAkaAIAECRoAgAQJGgCABAkaAIAECRoAgAQJGgCABAkaAIAECRoAgAQJGgCABAkaAIAECRoAgAQJGgCABAkaAIAECRoAgAQJGgCABAkaAIAECRoAgAQJGgCABAkaAIAECRoAgAQJGgCABAkaAIAECRoAgAQJGgCABAkaAIAECRoAgAQJGgCABAkaAIAECRoAgAQJGgCABAkaAIAECRoAgAQJGgCABAkaAIAECRoAgAQJGgCABAkaAIAECRoAgAQJGgCABAkaAIAECRoAgAQJGgCABAkaAIAECRoAgAQJGgCABAkaAIAECRoAgAQJGgCABAkaAIAECRoAgAQJGgCABAkaAIAECRoAgAQJGgCABAkaAIAECRoAgAQJGgCABAkaAIAECRoAgAQJGgCABAkaAIAECRoAgAQJGgCABAkaAIAECRoAgAQJGgCABAkaAIAECRoAgAQJGgCABAkaAIAECRoAgAQJGgCABAkaAIAECRoAgAQJGgCABAkaAIAECRoAgAQJGgCABAkaAIAECRoAgAQJGgCABAkaAIAECRoAgAQJGgCABAkaAIAECRoAgAQJGgCABAkaAIAECRoAgAQJGgCABAkaAIAECRoAgAQJGgCABAkaAIAECRoAgAQJGgCABAkaAIAECRoAgAQJGgCABAkaAIAECRoAgAQJGgCABAkaAIAECRoAgAQJGgCABAkaAIAECRoAgAQJGgCABAkaAIAECRoAgAQJGgCABAkaAIAECRoAgAQJGgCABAkaAIAECRoAgAQJGgCABAkaAIAECRoAgAQJGgCABAkaAIAECRoAgAQJGgCABAkaAIAECRoAgAQJGgCABAkaAIAECRoAgAQJGgCABAkaAIAECRoAgAQJGgCABAkaAIAECRoAgAQJGgCABAkaAIAECRoAgAQJGgCABAkaAIAECRoAgAQJGgCABAkaAIAECRoAgAQJGgCABAkaAIAECRoAgAQNH/BonZFe6jY/yeAAAAAElFTkSuQmCC" alt="dilloquest" style="height:96px;width:auto;object-fit:contain">
+    <div>
+      <div class="topbar-title">비용 사용 내역 및 근태 현황 분석 대시보드</div>
+    </div>
+  </div>
+  <div style="display:flex;align-items:center;gap:12px">
+    <span class="upload-status" id="uploadStatus">2025-12 ~ 2026-04 · 21명</span>
+    <button id="exportHtmlBtn" onclick="exportStaticHtml()" style="font-size: 12px; font-weight: 600; padding: 8px 16px; border-radius: 8px; border-width: medium; border-style: none; border-color: currentcolor; border-image: initial; background: rgb(23, 132, 95); color: rgb(255, 255, 255); cursor: pointer; white-space: nowrap; display: flex; align-items: center; gap: 6px; transition: background 0.15s;" onmouseover="this.style.background='#17845f'" onmouseout="this.style.background='#1D9E75'" disabled="">⏳ 생성 중...</button>
+    <div class="upload-zone-mini" id="uploadZoneMini" onclick="document.getElementById('fileInput').click()" style="display: none;">
+      <span class="upload-icon">📂</span>
+      <div><span>다른 파일 불러오기</span><br><strong id="currentFileName">근태 대시보드용 로우 데이터_누적.xlsx</strong></div>
+    </div>
+  </div>
+</div>
+
+
+
+<div class="tabs" id="tabsBar" style="display: flex;">
+  <div class="tab active" onclick="showPage('overview',this)">전사 추이</div>
+  <div class="tab" onclick="showPage('org',this)">조직별</div>
+  <div class="tab" onclick="showPage('pos',this)">직책별</div>
+  <div class="tab" onclick="showPage('anomaly',this)">코어타임 미준수</div>
+  <div class="tab" onclick="showPage('cost',this)">비용 현황</div>
+</div>
+
+<div class="main" id="mainContent" style="display: block;">
+  <div class="loading-bar" id="loadingBar"></div>
+
+  <!-- 전사 추이 -->
+  <div class="page active" id="page-overview">
+    <div class="summary-box">
+      <div class="summary-header">
+        <span class="summary-label">이달의 근태 요약</span>
+        <div class="summary-actions">
+          <select class="summary-month" id="summaryMonth"><option value="2026-04">26년 04월</option><option value="2026-03">26년 03월</option><option value="2026-02">26년 02월</option><option value="2026-01">26년 01월</option><option value="2025-12">25년 12월</option></select>
+          <button class="summary-save-btn" id="summarySaveBtn" onclick="saveSummary()">저장</button>
+        </div>
+      </div>
+      <textarea class="summary-textarea" id="summaryText" placeholder="이달의 근태 현황을 자유롭게 작성해주세요." oninput="onSummaryChange()"></textarea>
+      <div style="font-size: 11px; color: rgb(29, 158, 117); margin-top: 6px; text-align: right;" id="summaryStatus">26년 04월 저장됨</div>
+    </div>
+    <div class="kpi-grid" id="kpiGrid">
+    <div class="kpi"><div class="kpi-label">최근월 일평균 근로 (26년 04월)</div>
+      <div class="kpi-value">8.38<span class="kpi-unit">h</span></div>
+      <div class="kpi-sub">전월(26년 03월) 8.36h 대비</div>
+      <span class="kpi-badge bw">▲ 전월 대비 +0.02h</span></div>
+    <div class="kpi"><div class="kpi-label">최근월 인당 월연장 (26년 04월)</div>
+      <div class="kpi-value">12.90<span class="kpi-unit">h</span></div>
+      <div class="kpi-sub">전월(26년 03월) 8.03h 대비</div>
+      <span class="kpi-badge bw">▲ 전월 대비 +4.87h</span></div>
+    <div class="kpi"><div class="kpi-label">최근월 인당 사용연차 (26년 04월)</div>
+      <div class="kpi-value">0.83<span class="kpi-unit">개</span></div>
+      <div class="kpi-sub">전월(26년 03월) 0.98개 대비</div>
+      <span class="kpi-badge by">▼ 전월 대비 -0.15개</span></div>
+    <div class="kpi"><div class="kpi-label">5개월 평균 월연장</div>
+      <div class="kpi-value">6.68<span class="kpi-unit">h</span></div>
+      <div class="kpi-sub">25년 12월 ~ 26년 04월 전사 평균</div>
+      <span class="kpi-badge by">추이 증가 중</span></div></div>
+    <div class="row2">
+      <div class="card"><div class="card-title">전사 일평균 근로시간 추이</div><div style="position:relative;height:220px"><canvas id="trendDaily" width="957" height="396" style="display: block; box-sizing: border-box; height: 220px; width: 531px;"></canvas></div></div>
+      <div class="card"><div class="card-title">전사 인당 월평균 연장근로 추이</div><div style="position:relative;height:220px"><canvas id="trendOt" width="957" height="396" style="display: block; box-sizing: border-box; height: 220px; width: 531px;"></canvas></div></div>
+    </div>
+    <div class="full-card">
+      <div class="card-title">월별 전사 요약</div>
+      <table><thead><tr><th>월</th><th class="num">일평균 근로(h)</th><th class="num">인당 월연장(h)</th><th class="num">인당 사용연차(개)</th></tr></thead><tbody id="overviewTb"><tr><td style="font-weight:600">25년 12월</td>
+    <td class="num ">8.15</td>
+    <td class="num ">3.24</td>
+    <td class="num">0.71</td></tr><tr><td style="font-weight:600">26년 01월</td>
+    <td class="num ">8.22</td>
+    <td class="num ">3.36</td>
+    <td class="num">0.89</td></tr><tr><td style="font-weight:600">26년 02월</td>
+    <td class="num ">8.34</td>
+    <td class="num ">5.85</td>
+    <td class="num">0.53</td></tr><tr><td style="font-weight:600">26년 03월</td>
+    <td class="num ">8.36</td>
+    <td class="num ">8.03</td>
+    <td class="num">0.98</td></tr><tr><td style="font-weight:600">26년 04월</td>
+    <td class="num ">8.38</td>
+    <td class="num warn-ot">12.90</td>
+    <td class="num">0.83</td></tr></tbody></table>
+    </div>
+  </div>
+
+  <!-- 조직별 -->
+  <div class="page" id="page-org">
+    <div class="row2">
+      <div class="card"><div class="card-title">조직별 일평균 근로시간</div><div class="legend" id="orgLg"><div class="li"><div class="ld" style="background:#1D9E75"></div>아트팀</div><div class="li"><div class="ld" style="background:#8B5CF6"></div>아트앤테크팀</div><div class="li"><div class="ld" style="background:#D85A30"></div>기획팀</div><div class="li"><div class="ld" style="background:#378ADD"></div>프로그램팀</div><div class="li"><div class="ld" style="background:#888780"></div>경영지원팀</div></div><div style="position:relative;height:250px"><canvas id="orgDaily" height="0" style="display: block; box-sizing: border-box; height: 0px; width: 0px;" width="0"></canvas></div></div>
+      <div class="card"><div class="card-title">조직별 인당 월연장근로시간</div><div style="position:relative;height:250px"><canvas id="orgOt" height="0" style="display: block; box-sizing: border-box; height: 0px; width: 0px;" width="0"></canvas></div></div>
+    </div>
+    <div class="full-card">
+      <div class="card-title">조직별 상세 현황</div>
+      <table><thead><tr><th>조직</th><th class="ctr">월</th><th class="num">일평균(h)</th><th class="num">인당 월연장(h)</th><th class="num">인당 사용연차</th></tr></thead><tbody id="orgTb"><tr style="background:#F8F9FF">
+        <td rowspan="5" style="font-weight:600;vertical-align:middle"><span class="chip ce">경영지원팀</span></td>
+        <td class="ctr">25년 12월</td>
+        <td colspan="3" style="color:#CCC;text-align:center">해당없음</td>
+      </tr><tr style="background:#F8F9FF">
+        
+        <td class="ctr">26년 01월</td>
+        <td colspan="3" style="color:#CCC;text-align:center">해당없음</td>
+      </tr><tr style="background:#F8F9FF">
+        
+        <td class="ctr">26년 02월</td>
+        <td class="num ">8.00</td><td class="num ">0.07</td><td class="num">1.00</td>
+      </tr><tr style="background:#F8F9FF">
+        
+        <td class="ctr">26년 03월</td>
+        <td class="num ">8.03</td><td class="num ">0.60</td><td class="num">0.00</td>
+      </tr><tr style="background:#F8F9FF">
+        
+        <td class="ctr">26년 04월</td>
+        <td class="num ">7.83</td><td class="num ">0.80</td><td class="num">1.50</td>
+      </tr><tr style="">
+        <td rowspan="5" style="font-weight:600;vertical-align:middle"><span class="chip cc">기획팀</span></td>
+        <td class="ctr">25년 12월</td>
+        <td class="num ">8.04</td><td class="num ">0.82</td><td class="num">0.75</td>
+      </tr><tr style="">
+        
+        <td class="ctr">26년 01월</td>
+        <td class="num ">8.26</td><td class="num ">3.69</td><td class="num">1.17</td>
+      </tr><tr style="">
+        
+        <td class="ctr">26년 02월</td>
+        <td class="num ">8.65</td><td class="num ">10.97</td><td class="num">1.00</td>
+      </tr><tr style="">
+        
+        <td class="ctr">26년 03월</td>
+        <td class="num ">8.83</td><td class="num warn-ot">17.45</td><td class="num">0.38</td>
+      </tr><tr style="">
+        
+        <td class="ctr">26년 04월</td>
+        <td class="num ">8.59</td><td class="num warn-ot">17.60</td><td class="num">1.13</td>
+      </tr><tr style="background:#F8F9FF">
+        <td rowspan="5" style="font-weight:600;vertical-align:middle"><span class="chip cb">아트앤테크팀</span></td>
+        <td class="ctr">25년 12월</td>
+        <td class="num ">8.53</td><td class="num ">11.12</td><td class="num">0.75</td>
+      </tr><tr style="background:#F8F9FF">
+        
+        <td class="ctr">26년 01월</td>
+        <td class="num ">8.47</td><td class="num ">7.46</td><td class="num">1.00</td>
+      </tr><tr style="background:#F8F9FF">
+        
+        <td class="ctr">26년 02월</td>
+        <td class="num ">8.48</td><td class="num ">8.17</td><td class="num">0.83</td>
+      </tr><tr style="background:#F8F9FF">
+        
+        <td class="ctr">26년 03월</td>
+        <td class="num ">8.72</td><td class="num warn-ot">15.11</td><td class="num">1.50</td>
+      </tr><tr style="background:#F8F9FF">
+        
+        <td class="ctr">26년 04월</td>
+        <td class="num hi-d">9.01</td><td class="num warn-ot">26.73</td><td class="num">1.00</td>
+      </tr><tr style="">
+        <td rowspan="5" style="font-weight:600;vertical-align:middle"><span class="chip ca">아트팀</span></td>
+        <td class="ctr">25년 12월</td>
+        <td class="num ">8.13</td><td class="num ">2.63</td><td class="num">1.25</td>
+      </tr><tr style="">
+        
+        <td class="ctr">26년 01월</td>
+        <td class="num ">8.10</td><td class="num ">2.00</td><td class="num">1.25</td>
+      </tr><tr style="">
+        
+        <td class="ctr">26년 02월</td>
+        <td class="num ">8.08</td><td class="num ">1.35</td><td class="num">0.38</td>
+      </tr><tr style="">
+        
+        <td class="ctr">26년 03월</td>
+        <td class="num ">8.25</td><td class="num ">5.28</td><td class="num">1.88</td>
+      </tr><tr style="">
+        
+        <td class="ctr">26년 04월</td>
+        <td class="num ">8.22</td><td class="num ">9.45</td><td class="num">1.13</td>
+      </tr><tr style="background:#F8F9FF">
+        <td rowspan="5" style="font-weight:600;vertical-align:middle"><span class="chip cd">프로그램팀</span></td>
+        <td class="ctr">25년 12월</td>
+        <td class="num ">8.09</td><td class="num ">1.83</td><td class="num">0.33</td>
+      </tr><tr style="background:#F8F9FF">
+        
+        <td class="ctr">26년 01월</td>
+        <td class="num ">8.19</td><td class="num ">2.48</td><td class="num">0.61</td>
+      </tr><tr style="background:#F8F9FF">
+        
+        <td class="ctr">26년 02월</td>
+        <td class="num ">8.35</td><td class="num ">6.02</td><td class="num">0.28</td>
+      </tr><tr style="background:#F8F9FF">
+        
+        <td class="ctr">26년 03월</td>
+        <td class="num ">8.13</td><td class="num ">3.53</td><td class="num">0.78</td>
+      </tr><tr style="background:#F8F9FF">
+        
+        <td class="ctr">26년 04월</td>
+        <td class="num ">8.19</td><td class="num ">9.08</td><td class="num">0.44</td>
+      </tr></tbody></table>
+    </div>
+  </div>
+
+  <!-- 직책별 -->
+  <div class="page" id="page-pos">
+    <div class="row2">
+      <div class="card"><div class="card-title">직책별 일평균 근로시간</div><div style="position:relative;height:250px"><canvas id="posDaily" height="0" style="display: block; box-sizing: border-box; height: 0px; width: 0px;" width="0"></canvas></div></div>
+      <div class="card"><div class="card-title">직책별 인당 월연장근로시간</div><div style="position:relative;height:250px"><canvas id="posOt" height="0" style="display: block; box-sizing: border-box; height: 0px; width: 0px;" width="0"></canvas></div></div>
+    </div>
+    <div class="full-card">
+      <div class="card-title">직책별 상세 현황</div>
+      <table><thead><tr><th>직책</th><th class="ctr">월</th><th class="num">일평균(h)</th><th class="num">인당 월연장(h)</th><th class="num">인당 사용연차</th></tr></thead><tbody id="posTb"><tr style="background:#FFF8F5">
+        <td rowspan="5" style="font-weight:700;vertical-align:middle"><span class="chip cm">팀원</span></td>
+        <td class="ctr">25년 12월</td>
+        <td class="num ">8.09</td><td class="num ">1.82</td><td class="num">0.75</td>
+      </tr><tr style="background:#FFF8F5">
+        
+        <td class="ctr">26년 01월</td>
+        <td class="num ">8.12</td><td class="num ">1.57</td><td class="num">0.80</td>
+      </tr><tr style="background:#FFF8F5">
+        
+        <td class="ctr">26년 02월</td>
+        <td class="num ">8.18</td><td class="num ">3.03</td><td class="num">0.59</td>
+      </tr><tr style="background:#FFF8F5">
+        
+        <td class="ctr">26년 03월</td>
+        <td class="num ">8.25</td><td class="num ">5.71</td><td class="num">0.82</td>
+      </tr><tr style="background:#FFF8F5">
+        
+        <td class="ctr">26년 04월</td>
+        <td class="num ">8.18</td><td class="num ">8.67</td><td class="num">0.82</td>
+      </tr><tr style="">
+        <td rowspan="5" style="font-weight:700;vertical-align:middle"><span class="chip cl">팀장</span></td>
+        <td class="ctr">25년 12월</td>
+        <td class="num ">8.32</td><td class="num ">6.78</td><td class="num">0.63</td>
+      </tr><tr style="">
+        
+        <td class="ctr">26년 01월</td>
+        <td class="num ">8.48</td><td class="num ">10.05</td><td class="num">1.25</td>
+      </tr><tr style="">
+        
+        <td class="ctr">26년 02월</td>
+        <td class="num hi-d">9.01</td><td class="num warn-ot">17.17</td><td class="num">0.25</td>
+      </tr><tr style="">
+        
+        <td class="ctr">26년 03월</td>
+        <td class="num ">8.85</td><td class="num warn-ot">17.90</td><td class="num">1.63</td>
+      </tr><tr style="">
+        
+        <td class="ctr">26년 04월</td>
+        <td class="num hi-d">9.19</td><td class="num warn-ot">30.86</td><td class="num">0.88</td>
+      </tr></tbody></table>
+    </div>
+  </div>
+
+  <!-- 이상 출퇴근 -->
+  <div class="page" id="page-anomaly">
+    <div class="full-card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <div class="card-title" style="margin-bottom:0">이상 출퇴근 현황 <span id="anomaly-count" style="font-size:11px;font-weight:400;color:#AAA;margin-left:6px">총 31건</span></div>
+        <button onclick="exportReasons()" style="font-size:11px;padding:5px 12px;border-radius:6px;border:1px solid #3949AB;color:#3949AB;background:#fff;cursor:pointer">사유 내보내기 CSV</button>
+      </div>
+      <div class="filter-bar">
+        <label>월</label><select id="f-month" onchange="applyFilter()"><option value="">전체</option><option value="2026-04">26년 04월</option><option value="2026-03">26년 03월</option><option value="2026-02">26년 02월</option><option value="2026-01">26년 01월</option><option value="2025-12">25년 12월</option></select>
+        <label>조직</label><select id="f-org" onchange="applyFilter()"><option value="">전체</option><option>경영지원팀</option><option>기획팀</option><option>아트앤테크팀</option><option>아트팀</option><option>프로그램팀</option></select>
+        <label>직책</label><select id="f-pos" onchange="applyFilter()"><option value="">전체</option><option>팀원</option><option>팀장</option></select>
+        <label>이름</label><input id="f-name" type="text" placeholder="이름 검색" oninput="applyFilter()" style="width:90px">
+        <button class="filter-reset" onclick="resetFilter()">초기화</button>
+      </div>
+      <div style="overflow-x:auto">
+        <table><thead><tr><th>이름</th><th>조직</th><th class="ctr">직책</th><th class="ctr">월</th><th class="ctr">날짜</th><th class="ctr">시작</th><th class="ctr">종료</th><th class="ctr">미준수</th><th style="min-width:180px">사유</th></tr></thead><tbody id="anomalyTb"><tr data-m="2026-04" data-o="기획팀" data-p="팀장" data-n="김석규" style="background:#F8F9FF">
+      <td style="font-weight:600">김석규</td>
+      <td><span class="chip cc">기획팀</span></td>
+      <td class="ctr"><span class="chip cl">팀장</span></td>
+      <td class="ctr">26년 04월</td>
+      <td class="ctr">04-06</td>
+      <td class="ctr" style="background:#FFF0EE;font-weight:700;color:#C0392B">10:01</td>
+      <td class="ctr" style="">19:29</td>
+      <td class="ctr" style="white-space:normal;min-width:110px"><span class="vbadge vbadge-late">출근 +1분</span> </td>
+      <td><div style="display:flex;align-items:center;gap:4px">
+        <textarea class="reason-input " id="reason_김석규_2026-04_04-06" rows="1" placeholder="사유 입력..." onkeydown="if(event.key==='Enter'&amp;&amp;!event.shiftKey){event.preventDefault();saveReasonUI('김석규_2026-04_04-06')}"></textarea>
+        <button class="save-btn" onclick="saveReasonUI('김석규_2026-04_04-06')">저장</button>
+      </div></td>
+    </tr><tr data-m="2026-04" data-o="아트앤테크팀" data-p="팀원" data-n="김태연" style="">
+      <td style="font-weight:600">김태연</td>
+      <td><span class="chip cb">아트앤테크팀</span></td>
+      <td class="ctr"><span class="chip cm">팀원</span></td>
+      <td class="ctr">26년 04월</td>
+      <td class="ctr">04-20</td>
+      <td class="ctr" style="background:#FFF0EE;font-weight:700;color:#C0392B">10:11</td>
+      <td class="ctr" style="">23:13</td>
+      <td class="ctr" style="white-space:normal;min-width:110px"><span class="vbadge vbadge-late">출근 +11분</span> </td>
+      <td><div style="display:flex;align-items:center;gap:4px">
+        <textarea class="reason-input saved" id="reason_김태연_2026-04_04-20" rows="1" placeholder="사유 입력..." onkeydown="if(event.key==='Enter'&amp;&amp;!event.shiftKey){event.preventDefault();saveReasonUI('김태연_2026-04_04-20')}">지각</textarea>
+        <button class="save-btn" onclick="saveReasonUI('김태연_2026-04_04-20')">저장</button>
+      </div></td>
+    </tr><tr data-m="2026-04" data-o="아트팀" data-p="팀장" data-n="김훈" style="background:#F8F9FF">
+      <td style="font-weight:600">김훈</td>
+      <td><span class="chip ca">아트팀</span></td>
+      <td class="ctr"><span class="chip cl">팀장</span></td>
+      <td class="ctr">26년 04월</td>
+      <td class="ctr">04-23</td>
+      <td class="ctr" style="background:#FFF0EE;font-weight:700;color:#C0392B">11:04</td>
+      <td class="ctr" style="">22:05</td>
+      <td class="ctr" style="white-space:normal;min-width:110px"><span class="vbadge vbadge-late">출근 +64분</span> </td>
+      <td><div style="display:flex;align-items:center;gap:4px">
+        <textarea class="reason-input saved" id="reason_김훈_2026-04_04-23" rows="1" placeholder="사유 입력..." onkeydown="if(event.key==='Enter'&amp;&amp;!event.shiftKey){event.preventDefault();saveReasonUI('김훈_2026-04_04-23')}">지각</textarea>
+        <button class="save-btn" onclick="saveReasonUI('김훈_2026-04_04-23')">저장</button>
+      </div></td>
+    </tr><tr data-m="2026-04" data-o="프로그램팀" data-p="팀원" data-n="박한웅" style="">
+      <td style="font-weight:600">박한웅</td>
+      <td><span class="chip cd">프로그램팀</span></td>
+      <td class="ctr"><span class="chip cm">팀원</span></td>
+      <td class="ctr">26년 04월</td>
+      <td class="ctr">04-09</td>
+      <td class="ctr" style="">09:27</td>
+      <td class="ctr" style="background:#EEF2FF;font-weight:700;color:#3949AB">16:59</td>
+      <td class="ctr" style="white-space:normal;min-width:110px"><span class="vbadge vbadge-early">1분 조기퇴근</span></td>
+      <td><div style="display:flex;align-items:center;gap:4px">
+        <textarea class="reason-input " id="reason_박한웅_2026-04_04-09" rows="1" placeholder="사유 입력..." onkeydown="if(event.key==='Enter'&amp;&amp;!event.shiftKey){event.preventDefault();saveReasonUI('박한웅_2026-04_04-09')}"></textarea>
+        <button class="save-btn" onclick="saveReasonUI('박한웅_2026-04_04-09')">저장</button>
+      </div></td>
+    </tr><tr data-m="2026-04" data-o="기획팀" data-p="팀원" data-n="한정연" style="background:#F8F9FF">
+      <td style="font-weight:600">한정연</td>
+      <td><span class="chip cc">기획팀</span></td>
+      <td class="ctr"><span class="chip cm">팀원</span></td>
+      <td class="ctr">26년 04월</td>
+      <td class="ctr">04-06</td>
+      <td class="ctr" style="background:#FFF0EE;font-weight:700;color:#C0392B">10:01</td>
+      <td class="ctr" style="">20:35</td>
+      <td class="ctr" style="white-space:normal;min-width:110px"><span class="vbadge vbadge-late">출근 +1분</span> </td>
+      <td><div style="display:flex;align-items:center;gap:4px">
+        <textarea class="reason-input " id="reason_한정연_2026-04_04-06" rows="1" placeholder="사유 입력..." onkeydown="if(event.key==='Enter'&amp;&amp;!event.shiftKey){event.preventDefault();saveReasonUI('한정연_2026-04_04-06')}"></textarea>
+        <button class="save-btn" onclick="saveReasonUI('한정연_2026-04_04-06')">저장</button>
+      </div></td>
+    </tr><tr data-m="2026-04" data-o="기획팀" data-p="팀원" data-n="한정연" style="">
+      <td style="font-weight:600">한정연</td>
+      <td><span class="chip cc">기획팀</span></td>
+      <td class="ctr"><span class="chip cm">팀원</span></td>
+      <td class="ctr">26년 04월</td>
+      <td class="ctr">04-10</td>
+      <td class="ctr" style="background:#FFF0EE;font-weight:700;color:#C0392B">10:01</td>
+      <td class="ctr" style="">19:49</td>
+      <td class="ctr" style="white-space:normal;min-width:110px"><span class="vbadge vbadge-late">출근 +1분</span> </td>
+      <td><div style="display:flex;align-items:center;gap:4px">
+        <textarea class="reason-input " id="reason_한정연_2026-04_04-10" rows="1" placeholder="사유 입력..." onkeydown="if(event.key==='Enter'&amp;&amp;!event.shiftKey){event.preventDefault();saveReasonUI('한정연_2026-04_04-10')}"></textarea>
+        <button class="save-btn" onclick="saveReasonUI('한정연_2026-04_04-10')">저장</button>
+      </div></td>
+    </tr><tr data-m="2026-04" data-o="기획팀" data-p="팀원" data-n="한정연" style="background:#F8F9FF">
+      <td style="font-weight:600">한정연</td>
+      <td><span class="chip cc">기획팀</span></td>
+      <td class="ctr"><span class="chip cm">팀원</span></td>
+      <td class="ctr">26년 04월</td>
+      <td class="ctr">04-20</td>
+      <td class="ctr" style="background:#FFF0EE;font-weight:700;color:#C0392B">10:25</td>
+      <td class="ctr" style="">20:44</td>
+      <td class="ctr" style="white-space:normal;min-width:110px"><span class="vbadge vbadge-late">출근 +25분</span> </td>
+      <td><div style="display:flex;align-items:center;gap:4px">
+        <textarea class="reason-input saved" id="reason_한정연_2026-04_04-20" rows="1" placeholder="사유 입력..." onkeydown="if(event.key==='Enter'&amp;&amp;!event.shiftKey){event.preventDefault();saveReasonUI('한정연_2026-04_04-20')}">지각</textarea>
+        <button class="save-btn" onclick="saveReasonUI('한정연_2026-04_04-20')">저장</button>
+      </div></td>
+    </tr><tr data-m="2026-04" data-o="기획팀" data-p="팀원" data-n="한정연" style="">
+      <td style="font-weight:600">한정연</td>
+      <td><span class="chip cc">기획팀</span></td>
+      <td class="ctr"><span class="chip cm">팀원</span></td>
+      <td class="ctr">26년 04월</td>
+      <td class="ctr">04-21</td>
+      <td class="ctr" style="background:#FFF0EE;font-weight:700;color:#C0392B">10:09</td>
+      <td class="ctr" style="">19:56</td>
+      <td class="ctr" style="white-space:normal;min-width:110px"><span class="vbadge vbadge-late">출근 +9분</span> </td>
+      <td><div style="display:flex;align-items:center;gap:4px">
+        <textarea class="reason-input " id="reason_한정연_2026-04_04-21" rows="1" placeholder="사유 입력..." onkeydown="if(event.key==='Enter'&amp;&amp;!event.shiftKey){event.preventDefault();saveReasonUI('한정연_2026-04_04-21')}"></textarea>
+        <button class="save-btn" onclick="saveReasonUI('한정연_2026-04_04-21')">저장</button>
+      </div></td>
+    </tr><tr data-m="2026-04" data-o="기획팀" data-p="팀원" data-n="한정연" style="background:#F8F9FF">
+      <td style="font-weight:600">한정연</td>
+      <td><span class="chip cc">기획팀</span></td>
+      <td class="ctr"><span class="chip cm">팀원</span></td>
+      <td class="ctr">26년 04월</td>
+      <td class="ctr">04-22</td>
+      <td class="ctr" style="background:#FFF0EE;font-weight:700;color:#C0392B">11:01</td>
+      <td class="ctr" style="">20:15</td>
+      <td class="ctr" style="white-space:normal;min-width:110px"><span class="vbadge vbadge-late">출근 +61분</span> </td>
+      <td><div style="display:flex;align-items:center;gap:4px">
+        <textarea class="reason-input saved" id="reason_한정연_2026-04_04-22" rows="1" placeholder="사유 입력..." onkeydown="if(event.key==='Enter'&amp;&amp;!event.shiftKey){event.preventDefault();saveReasonUI('한정연_2026-04_04-22')}">개인사유 (팀 사전공유O)</textarea>
+        <button class="save-btn" onclick="saveReasonUI('한정연_2026-04_04-22')">저장</button>
+      </div></td>
+    </tr><tr data-m="2026-04" data-o="기획팀" data-p="팀원" data-n="한정연" style="">
+      <td style="font-weight:600">한정연</td>
+      <td><span class="chip cc">기획팀</span></td>
+      <td class="ctr"><span class="chip cm">팀원</span></td>
+      <td class="ctr">26년 04월</td>
+      <td class="ctr">04-23</td>
+      <td class="ctr" style="background:#FFF0EE;font-weight:700;color:#C0392B">10:05</td>
+      <td class="ctr" style="">19:28</td>
+      <td class="ctr" style="white-space:normal;min-width:110px"><span class="vbadge vbadge-late">출근 +5분</span> </td>
+      <td><div style="display:flex;align-items:center;gap:4px">
+        <textarea class="reason-input " id="reason_한정연_2026-04_04-23" rows="1" placeholder="사유 입력..." onkeydown="if(event.key==='Enter'&amp;&amp;!event.shiftKey){event.preventDefault();saveReasonUI('한정연_2026-04_04-23')}"></textarea>
+        <button class="save-btn" onclick="saveReasonUI('한정연_2026-04_04-23')">저장</button>
+      </div></td>
+    </tr><tr data-m="2026-04" data-o="기획팀" data-p="팀원" data-n="한정연" style="background:#F8F9FF">
+      <td style="font-weight:600">한정연</td>
+      <td><span class="chip cc">기획팀</span></td>
+      <td class="ctr"><span class="chip cm">팀원</span></td>
+      <td class="ctr">26년 04월</td>
+      <td class="ctr">04-30</td>
+      <td class="ctr" style="background:#FFF0EE;font-weight:700;color:#C0392B">10:03</td>
+      <td class="ctr" style="">18:59</td>
+      <td class="ctr" style="white-space:normal;min-width:110px"><span class="vbadge vbadge-late">출근 +3분</span> </td>
+      <td><div style="display:flex;align-items:center;gap:4px">
+        <textarea class="reason-input " id="reason_한정연_2026-04_04-30" rows="1" placeholder="사유 입력..." onkeydown="if(event.key==='Enter'&amp;&amp;!event.shiftKey){event.preventDefault();saveReasonUI('한정연_2026-04_04-30')}"></textarea>
+        <button class="save-btn" onclick="saveReasonUI('한정연_2026-04_04-30')">저장</button>
+      </div></td>
+    </tr><tr data-m="2026-03" data-o="아트앤테크팀" data-p="팀장" data-n="국중원" style="">
+      <td style="font-weight:600">국중원</td>
+      <td><span class="chip cb">아트앤테크팀</span></td>
+      <td class="ctr"><span class="chip cl">팀장</span></td>
+      <td class="ctr">26년 03월</td>
+      <td class="ctr">03-17</td>
+      <td class="ctr" style="background:#FFF0EE;font-weight:700;color:#C0392B">10:03</td>
+      <td class="ctr" style="">18:27</td>
+      <td class="ctr" style="white-space:normal;min-width:110px"><span class="vbadge vbadge-late">출근 +3분</span> </td>
+      <td><div style="display:flex;align-items:center;gap:4px">
+        <textarea class="reason-input " id="reason_국중원_2026-03_03-17" rows="1" placeholder="사유 입력..." onkeydown="if(event.key==='Enter'&amp;&amp;!event.shiftKey){event.preventDefault();saveReasonUI('국중원_2026-03_03-17')}"></textarea>
+        <button class="save-btn" onclick="saveReasonUI('국중원_2026-03_03-17')">저장</button>
+      </div></td>
+    </tr><tr data-m="2026-03" data-o="아트앤테크팀" data-p="팀원" data-n="김태연" style="background:#F8F9FF">
+      <td style="font-weight:600">김태연</td>
+      <td><span class="chip cb">아트앤테크팀</span></td>
+      <td class="ctr"><span class="chip cm">팀원</span></td>
+      <td class="ctr">26년 03월</td>
+      <td class="ctr">03-23</td>
+      <td class="ctr" style="background:#FFF0EE;font-weight:700;color:#C0392B">10:04</td>
+      <td class="ctr" style="">23:05</td>
+      <td class="ctr" style="white-space:normal;min-width:110px"><span class="vbadge vbadge-late">출근 +4분</span> </td>
+      <td><div style="display:flex;align-items:center;gap:4px">
+        <textarea class="reason-input " id="reason_김태연_2026-03_03-23" rows="1" placeholder="사유 입력..." onkeydown="if(event.key==='Enter'&amp;&amp;!event.shiftKey){event.preventDefault();saveReasonUI('김태연_2026-03_03-23')}"></textarea>
+        <button class="save-btn" onclick="saveReasonUI('김태연_2026-03_03-23')">저장</button>
+      </div></td>
+    </tr><tr data-m="2026-03" data-o="프로그램팀" data-p="팀원" data-n="이하은" style="">
+      <td style="font-weight:600">이하은</td>
+      <td><span class="chip cd">프로그램팀</span></td>
+      <td class="ctr"><span class="chip cm">팀원</span></td>
+      <td class="ctr">26년 03월</td>
+      <td class="ctr">03-18</td>
+      <td class="ctr" style="background:#FFF0EE;font-weight:700;color:#C0392B">10:02</td>
+      <td class="ctr" style="">19:13</td>
+      <td class="ctr" style="white-space:normal;min-width:110px"><span class="vbadge vbadge-late">출근 +2분</span> </td>
+      <td><div style="display:flex;align-items:center;gap:4px">
+        <textarea class="reason-input " id="reason_이하은_2026-03_03-18" rows="1" placeholder="사유 입력..." onkeydown="if(event.key==='Enter'&amp;&amp;!event.shiftKey){event.preventDefault();saveReasonUI('이하은_2026-03_03-18')}"></textarea>
+        <button class="save-btn" onclick="saveReasonUI('이하은_2026-03_03-18')">저장</button>
+      </div></td>
+    </tr><tr data-m="2026-03" data-o="프로그램팀" data-p="팀원" data-n="이하은" style="background:#F8F9FF">
+      <td style="font-weight:600">이하은</td>
+      <td><span class="chip cd">프로그램팀</span></td>
+      <td class="ctr"><span class="chip cm">팀원</span></td>
+      <td class="ctr">26년 03월</td>
+      <td class="ctr">03-27</td>
+      <td class="ctr" style="">09:58</td>
+      <td class="ctr" style="background:#EEF2FF;font-weight:700;color:#3949AB">12:35</td>
+      <td class="ctr" style="white-space:normal;min-width:110px"><span class="vbadge vbadge-early">4h 25분 조기퇴근</span></td>
+      <td><div style="display:flex;align-items:center;gap:4px">
+        <textarea class="reason-input " id="reason_이하은_2026-03_03-27" rows="1" placeholder="사유 입력..." onkeydown="if(event.key==='Enter'&amp;&amp;!event.shiftKey){event.preventDefault();saveReasonUI('이하은_2026-03_03-27')}"></textarea>
+        <button class="save-btn" onclick="saveReasonUI('이하은_2026-03_03-27')">저장</button>
+      </div></td>
+    </tr><tr data-m="2026-03" data-o="기획팀" data-p="팀원" data-n="한정연" style="">
+      <td style="font-weight:600">한정연</td>
+      <td><span class="chip cc">기획팀</span></td>
+      <td class="ctr"><span class="chip cm">팀원</span></td>
+      <td class="ctr">26년 03월</td>
+      <td class="ctr">03-06</td>
+      <td class="ctr" style="background:#FFF0EE;font-weight:700;color:#C0392B">10:04</td>
+      <td class="ctr" style="">20:21</td>
+      <td class="ctr" style="white-space:normal;min-width:110px"><span class="vbadge vbadge-late">출근 +4분</span> </td>
+      <td><div style="display:flex;align-items:center;gap:4px">
+        <textarea class="reason-input " id="reason_한정연_2026-03_03-06" rows="1" placeholder="사유 입력..." onkeydown="if(event.key==='Enter'&amp;&amp;!event.shiftKey){event.preventDefault();saveReasonUI('한정연_2026-03_03-06')}"></textarea>
+        <button class="save-btn" onclick="saveReasonUI('한정연_2026-03_03-06')">저장</button>
+      </div></td>
+    </tr><tr data-m="2026-03" data-o="기획팀" data-p="팀원" data-n="한정연" style="background:#F8F9FF">
+      <td style="font-weight:600">한정연</td>
+      <td><span class="chip cc">기획팀</span></td>
+      <td class="ctr"><span class="chip cm">팀원</span></td>
+      <td class="ctr">26년 03월</td>
+      <td class="ctr">03-10</td>
+      <td class="ctr" style="background:#FFF0EE;font-weight:700;color:#C0392B">10:09</td>
+      <td class="ctr" style="">19:12</td>
+      <td class="ctr" style="white-space:normal;min-width:110px"><span class="vbadge vbadge-late">출근 +9분</span> </td>
+      <td><div style="display:flex;align-items:center;gap:4px">
+        <textarea class="reason-input " id="reason_한정연_2026-03_03-10" rows="1" placeholder="사유 입력..." onkeydown="if(event.key==='Enter'&amp;&amp;!event.shiftKey){event.preventDefault();saveReasonUI('한정연_2026-03_03-10')}"></textarea>
+        <button class="save-btn" onclick="saveReasonUI('한정연_2026-03_03-10')">저장</button>
+      </div></td>
+    </tr><tr data-m="2026-02" data-o="아트팀" data-p="팀장" data-n="김훈" style="">
+      <td style="font-weight:600">김훈</td>
+      <td><span class="chip ca">아트팀</span></td>
+      <td class="ctr"><span class="chip cl">팀장</span></td>
+      <td class="ctr">26년 02월</td>
+      <td class="ctr">02-26</td>
+      <td class="ctr" style="background:#FFF0EE;font-weight:700;color:#C0392B">10:09</td>
+      <td class="ctr" style="">18:42</td>
+      <td class="ctr" style="white-space:normal;min-width:110px"><span class="vbadge vbadge-late">출근 +9분</span> </td>
+      <td><div style="display:flex;align-items:center;gap:4px">
+        <textarea class="reason-input " id="reason_김훈_2026-02_02-26" rows="1" placeholder="사유 입력..." onkeydown="if(event.key==='Enter'&amp;&amp;!event.shiftKey){event.preventDefault();saveReasonUI('김훈_2026-02_02-26')}"></textarea>
+        <button class="save-btn" onclick="saveReasonUI('김훈_2026-02_02-26')">저장</button>
+      </div></td>
+    </tr><tr data-m="2026-01" data-o="아트앤테크팀" data-p="팀원" data-n="김태연" style="background:#F8F9FF">
+      <td style="font-weight:600">김태연</td>
+      <td><span class="chip cb">아트앤테크팀</span></td>
+      <td class="ctr"><span class="chip cm">팀원</span></td>
+      <td class="ctr">26년 01월</td>
+      <td class="ctr">01-13</td>
+      <td class="ctr" style="background:#FFF0EE;font-weight:700;color:#C0392B">10:08</td>
+      <td class="ctr" style="">17:49</td>
+      <td class="ctr" style="white-space:normal;min-width:110px"><span class="vbadge vbadge-late">출근 +8분</span> </td>
+      <td><div style="display:flex;align-items:center;gap:4px">
+        <textarea class="reason-input " id="reason_김태연_2026-01_01-13" rows="1" placeholder="사유 입력..." onkeydown="if(event.key==='Enter'&amp;&amp;!event.shiftKey){event.preventDefault();saveReasonUI('김태연_2026-01_01-13')}"></textarea>
+        <button class="save-btn" onclick="saveReasonUI('김태연_2026-01_01-13')">저장</button>
+      </div></td>
+    </tr><tr data-m="2026-01" data-o="아트앤테크팀" data-p="팀원" data-n="김태연" style="">
+      <td style="font-weight:600">김태연</td>
+      <td><span class="chip cb">아트앤테크팀</span></td>
+      <td class="ctr"><span class="chip cm">팀원</span></td>
+      <td class="ctr">26년 01월</td>
+      <td class="ctr">01-28</td>
+      <td class="ctr" style="background:#FFF0EE;font-weight:700;color:#C0392B">10:10</td>
+      <td class="ctr" style="">18:39</td>
+      <td class="ctr" style="white-space:normal;min-width:110px"><span class="vbadge vbadge-late">출근 +10분</span> </td>
+      <td><div style="display:flex;align-items:center;gap:4px">
+        <textarea class="reason-input " id="reason_김태연_2026-01_01-28" rows="1" placeholder="사유 입력..." onkeydown="if(event.key==='Enter'&amp;&amp;!event.shiftKey){event.preventDefault();saveReasonUI('김태연_2026-01_01-28')}"></textarea>
+        <button class="save-btn" onclick="saveReasonUI('김태연_2026-01_01-28')">저장</button>
+      </div></td>
+    </tr><tr data-m="2025-12" data-o="프로그램팀" data-p="팀원" data-n="강동준" style="background:#F8F9FF">
+      <td style="font-weight:600">강동준</td>
+      <td><span class="chip cd">프로그램팀</span></td>
+      <td class="ctr"><span class="chip cm">팀원</span></td>
+      <td class="ctr">25년 12월</td>
+      <td class="ctr">12-05</td>
+      <td class="ctr" style="background:#FFF0EE;font-weight:700;color:#C0392B">11:37</td>
+      <td class="ctr" style="">17:50</td>
+      <td class="ctr" style="white-space:normal;min-width:110px"><span class="vbadge vbadge-late">출근 +97분</span> </td>
+      <td><div style="display:flex;align-items:center;gap:4px">
+        <textarea class="reason-input saved" id="reason_강동준_2025-12_12-05" rows="1" placeholder="사유 입력..." onkeydown="if(event.key==='Enter'&amp;&amp;!event.shiftKey){event.preventDefault();saveReasonUI('강동준_2025-12_12-05')}">폭설로 인한 출근시간 내부조정</textarea>
+        <button class="save-btn" onclick="saveReasonUI('강동준_2025-12_12-05')">저장</button>
+      </div></td>
+    </tr><tr data-m="2025-12" data-o="아트앤테크팀" data-p="팀장" data-n="국중원" style="">
+      <td style="font-weight:600">국중원</td>
+      <td><span class="chip cb">아트앤테크팀</span></td>
+      <td class="ctr"><span class="chip cl">팀장</span></td>
+      <td class="ctr">25년 12월</td>
+      <td class="ctr">12-05</td>
+      <td class="ctr" style="background:#FFF0EE;font-weight:700;color:#C0392B">11:05</td>
+      <td class="ctr" style="">20:28</td>
+      <td class="ctr" style="white-space:normal;min-width:110px"><span class="vbadge vbadge-late">출근 +65분</span> </td>
+      <td><div style="display:flex;align-items:center;gap:4px">
+        <textarea class="reason-input saved" id="reason_국중원_2025-12_12-05" rows="1" placeholder="사유 입력..." onkeydown="if(event.key==='Enter'&amp;&amp;!event.shiftKey){event.preventDefault();saveReasonUI('국중원_2025-12_12-05')}">폭설로 인한 출근시간 내부조정</textarea>
+        <button class="save-btn" onclick="saveReasonUI('국중원_2025-12_12-05')">저장</button>
+      </div></td>
+    </tr><tr data-m="2025-12" data-o="아트팀" data-p="팀원" data-n="김시욱" style="background:#F8F9FF">
+      <td style="font-weight:600">김시욱</td>
+      <td><span class="chip ca">아트팀</span></td>
+      <td class="ctr"><span class="chip cm">팀원</span></td>
+      <td class="ctr">25년 12월</td>
+      <td class="ctr">12-05</td>
+      <td class="ctr" style="background:#FFF0EE;font-weight:700;color:#C0392B">11:42</td>
+      <td class="ctr" style="">18:56</td>
+      <td class="ctr" style="white-space:normal;min-width:110px"><span class="vbadge vbadge-late">출근 +102분</span> </td>
+      <td><div style="display:flex;align-items:center;gap:4px">
+        <textarea class="reason-input saved" id="reason_김시욱_2025-12_12-05" rows="1" placeholder="사유 입력..." onkeydown="if(event.key==='Enter'&amp;&amp;!event.shiftKey){event.preventDefault();saveReasonUI('김시욱_2025-12_12-05')}">폭설로 인한 출근시간 내부조정</textarea>
+        <button class="save-btn" onclick="saveReasonUI('김시욱_2025-12_12-05')">저장</button>
+      </div></td>
+    </tr><tr data-m="2025-12" data-o="아트팀" data-p="팀장" data-n="김훈" style="">
+      <td style="font-weight:600">김훈</td>
+      <td><span class="chip ca">아트팀</span></td>
+      <td class="ctr"><span class="chip cl">팀장</span></td>
+      <td class="ctr">25년 12월</td>
+      <td class="ctr">12-05</td>
+      <td class="ctr" style="background:#FFF0EE;font-weight:700;color:#C0392B">11:54</td>
+      <td class="ctr" style="">18:56</td>
+      <td class="ctr" style="white-space:normal;min-width:110px"><span class="vbadge vbadge-late">출근 +114분</span> </td>
+      <td><div style="display:flex;align-items:center;gap:4px">
+        <textarea class="reason-input saved" id="reason_김훈_2025-12_12-05" rows="1" placeholder="사유 입력..." onkeydown="if(event.key==='Enter'&amp;&amp;!event.shiftKey){event.preventDefault();saveReasonUI('김훈_2025-12_12-05')}">폭설로 인한 출근시간 내부조정</textarea>
+        <button class="save-btn" onclick="saveReasonUI('김훈_2025-12_12-05')">저장</button>
+      </div></td>
+    </tr><tr data-m="2025-12" data-o="아트팀" data-p="팀장" data-n="김훈" style="background:#F8F9FF">
+      <td style="font-weight:600">김훈</td>
+      <td><span class="chip ca">아트팀</span></td>
+      <td class="ctr"><span class="chip cl">팀장</span></td>
+      <td class="ctr">25년 12월</td>
+      <td class="ctr">12-31</td>
+      <td class="ctr" style="">06:44</td>
+      <td class="ctr" style="background:#EEF2FF;font-weight:700;color:#3949AB">16:59</td>
+      <td class="ctr" style="white-space:normal;min-width:110px"><span class="vbadge vbadge-early">1분 조기퇴근</span></td>
+      <td><div style="display:flex;align-items:center;gap:4px">
+        <textarea class="reason-input " id="reason_김훈_2025-12_12-31" rows="1" placeholder="사유 입력..." onkeydown="if(event.key==='Enter'&amp;&amp;!event.shiftKey){event.preventDefault();saveReasonUI('김훈_2025-12_12-31')}"></textarea>
+        <button class="save-btn" onclick="saveReasonUI('김훈_2025-12_12-31')">저장</button>
+      </div></td>
+    </tr><tr data-m="2025-12" data-o="프로그램팀" data-p="팀원" data-n="박한웅" style="">
+      <td style="font-weight:600">박한웅</td>
+      <td><span class="chip cd">프로그램팀</span></td>
+      <td class="ctr"><span class="chip cm">팀원</span></td>
+      <td class="ctr">25년 12월</td>
+      <td class="ctr">12-05</td>
+      <td class="ctr" style="background:#FFF0EE;font-weight:700;color:#C0392B">10:06</td>
+      <td class="ctr" style="">18:27</td>
+      <td class="ctr" style="white-space:normal;min-width:110px"><span class="vbadge vbadge-late">출근 +6분</span> </td>
+      <td><div style="display:flex;align-items:center;gap:4px">
+        <textarea class="reason-input saved" id="reason_박한웅_2025-12_12-05" rows="1" placeholder="사유 입력..." onkeydown="if(event.key==='Enter'&amp;&amp;!event.shiftKey){event.preventDefault();saveReasonUI('박한웅_2025-12_12-05')}">폭설로 인한 출근시간 내부조정</textarea>
+        <button class="save-btn" onclick="saveReasonUI('박한웅_2025-12_12-05')">저장</button>
+      </div></td>
+    </tr><tr data-m="2025-12" data-o="프로그램팀" data-p="팀장" data-n="신휘재" style="background:#F8F9FF">
+      <td style="font-weight:600">신휘재</td>
+      <td><span class="chip cd">프로그램팀</span></td>
+      <td class="ctr"><span class="chip cl">팀장</span></td>
+      <td class="ctr">25년 12월</td>
+      <td class="ctr">12-05</td>
+      <td class="ctr" style="background:#FFF0EE;font-weight:700;color:#C0392B">10:08</td>
+      <td class="ctr" style="">19:24</td>
+      <td class="ctr" style="white-space:normal;min-width:110px"><span class="vbadge vbadge-late">출근 +8분</span> </td>
+      <td><div style="display:flex;align-items:center;gap:4px">
+        <textarea class="reason-input saved" id="reason_신휘재_2025-12_12-05" rows="1" placeholder="사유 입력..." onkeydown="if(event.key==='Enter'&amp;&amp;!event.shiftKey){event.preventDefault();saveReasonUI('신휘재_2025-12_12-05')}">폭설로 인한 출근시간 내부조정</textarea>
+        <button class="save-btn" onclick="saveReasonUI('신휘재_2025-12_12-05')">저장</button>
+      </div></td>
+    </tr><tr data-m="2025-12" data-o="아트팀" data-p="팀원" data-n="유예진" style="">
+      <td style="font-weight:600">유예진</td>
+      <td><span class="chip ca">아트팀</span></td>
+      <td class="ctr"><span class="chip cm">팀원</span></td>
+      <td class="ctr">25년 12월</td>
+      <td class="ctr">12-05</td>
+      <td class="ctr" style="background:#FFF0EE;font-weight:700;color:#C0392B">11:00</td>
+      <td class="ctr" style="">18:37</td>
+      <td class="ctr" style="white-space:normal;min-width:110px"><span class="vbadge vbadge-late">출근 +60분</span> </td>
+      <td><div style="display:flex;align-items:center;gap:4px">
+        <textarea class="reason-input saved" id="reason_유예진_2025-12_12-05" rows="1" placeholder="사유 입력..." onkeydown="if(event.key==='Enter'&amp;&amp;!event.shiftKey){event.preventDefault();saveReasonUI('유예진_2025-12_12-05')}">폭설로 인한 출근시간 내부조정</textarea>
+        <button class="save-btn" onclick="saveReasonUI('유예진_2025-12_12-05')">저장</button>
+      </div></td>
+    </tr><tr data-m="2025-12" data-o="프로그램팀" data-p="팀원" data-n="이하은" style="background:#F8F9FF">
+      <td style="font-weight:600">이하은</td>
+      <td><span class="chip cd">프로그램팀</span></td>
+      <td class="ctr"><span class="chip cm">팀원</span></td>
+      <td class="ctr">25년 12월</td>
+      <td class="ctr">12-02</td>
+      <td class="ctr" style="background:#FFF0EE;font-weight:700;color:#C0392B">10:03</td>
+      <td class="ctr" style="">19:06</td>
+      <td class="ctr" style="white-space:normal;min-width:110px"><span class="vbadge vbadge-late">출근 +3분</span> </td>
+      <td><div style="display:flex;align-items:center;gap:4px">
+        <textarea class="reason-input " id="reason_이하은_2025-12_12-02" rows="1" placeholder="사유 입력..." onkeydown="if(event.key==='Enter'&amp;&amp;!event.shiftKey){event.preventDefault();saveReasonUI('이하은_2025-12_12-02')}"></textarea>
+        <button class="save-btn" onclick="saveReasonUI('이하은_2025-12_12-02')">저장</button>
+      </div></td>
+    </tr><tr data-m="2025-12" data-o="프로그램팀" data-p="팀원" data-n="전재경" style="">
+      <td style="font-weight:600">전재경</td>
+      <td><span class="chip cd">프로그램팀</span></td>
+      <td class="ctr"><span class="chip cm">팀원</span></td>
+      <td class="ctr">25년 12월</td>
+      <td class="ctr">12-05</td>
+      <td class="ctr" style="background:#FFF0EE;font-weight:700;color:#C0392B">11:41</td>
+      <td class="ctr" style="">18:56</td>
+      <td class="ctr" style="white-space:normal;min-width:110px"><span class="vbadge vbadge-late">출근 +101분</span> </td>
+      <td><div style="display:flex;align-items:center;gap:4px">
+        <textarea class="reason-input saved" id="reason_전재경_2025-12_12-05" rows="1" placeholder="사유 입력..." onkeydown="if(event.key==='Enter'&amp;&amp;!event.shiftKey){event.preventDefault();saveReasonUI('전재경_2025-12_12-05')}">폭설로 인한 출근시간 내부조정</textarea>
+        <button class="save-btn" onclick="saveReasonUI('전재경_2025-12_12-05')">저장</button>
+      </div></td>
+    </tr><tr data-m="2025-12" data-o="아트팀" data-p="팀원" data-n="정의혁" style="background:#F8F9FF">
+      <td style="font-weight:600">정의혁</td>
+      <td><span class="chip ca">아트팀</span></td>
+      <td class="ctr"><span class="chip cm">팀원</span></td>
+      <td class="ctr">25년 12월</td>
+      <td class="ctr">12-05</td>
+      <td class="ctr" style="background:#FFF0EE;font-weight:700;color:#C0392B">11:00</td>
+      <td class="ctr" style="">18:30</td>
+      <td class="ctr" style="white-space:normal;min-width:110px"><span class="vbadge vbadge-late">출근 +60분</span> </td>
+      <td><div style="display:flex;align-items:center;gap:4px">
+        <textarea class="reason-input saved" id="reason_정의혁_2025-12_12-05" rows="1" placeholder="사유 입력..." onkeydown="if(event.key==='Enter'&amp;&amp;!event.shiftKey){event.preventDefault();saveReasonUI('정의혁_2025-12_12-05')}">폭설로 인한 출근시간 내부조정</textarea>
+        <button class="save-btn" onclick="saveReasonUI('정의혁_2025-12_12-05')">저장</button>
+      </div></td>
+    </tr></tbody></table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ 비용 현황 ══ -->
+  <div class="page" id="page-cost">
+
+    <!-- KPI 요약 -->
+    <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:18px" id="costKpiGrid">
+      <div class="kpi">
+        <div class="kpi-label">최근월 공통운영비</div>
+        <div class="kpi-value" id="ck1">—</div>
+        <div class="kpi-sub" id="ck1sub">—</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">공통운영비 잔액</div>
+        <div class="kpi-value" id="ck2">—</div>
+        <div class="kpi-sub" id="ck2sub">—</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">최근월 카페테리아</div>
+        <div class="kpi-value" id="ck3">—</div>
+        <div class="kpi-sub" id="ck3sub">—</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">최근월 야근교통비</div>
+        <div class="kpi-value" id="ck4">—</div>
+        <div class="kpi-sub" id="ck4sub">—</div>
+      </div>
+    </div>
+
+    <!-- 조직별 비용 요약 (최근월) -->
+    <div class="full-card">
+      <div class="card-title" id="teamSummaryTitle">조직별 비용 사용내역 (최근월)</div>
+      <div style="position:relative;height:240px"><canvas id="teamSummaryChart"></canvas></div>
+    </div>
+
+    <div class="row2">
+      <!-- 야근교통비 추이 -->
+      <div class="card">
+        <div class="card-title">야근교통비 (팀별 추이)</div>
+        <div class="legend" id="otCostLg"></div>
+        <div style="position:relative;height:220px"><canvas id="otCostChart"></canvas></div>
+      </div>
+      <!-- 공통운영비 팀별 추이 -->
+      <div class="card">
+        <div class="card-title">공통운영비 (팀별 추이)</div>
+        <div class="legend" id="commonOrgLg"></div>
+        <div style="position:relative;height:220px"><canvas id="commonOrgChart"></canvas></div>
+      </div>
+    </div>
+
+    <div class="row2">
+      <!-- 공통운영비 월별 합계 -->
+      <div class="card">
+        <div class="card-title">공통운영비 (월별 합계 · 잔액)</div>
+        <div style="position:relative;height:220px"><canvas id="commonCostChart"></canvas></div>
+      </div>
+      <!-- Asset 구매 팀별 -->
+      <div class="card">
+        <div class="card-title">Asset 구매 (팀별)</div>
+        <div class="legend" id="assetLg"></div>
+        <div style="position:relative;height:220px"><canvas id="assetChart"></canvas></div>
+      </div>
+    </div>
+
+    <!-- 카페테리아 운영비 -->
+    <div class="full-card">
+      <div class="card-title">카페테리아 운영비</div>
+      <div style="position:relative;height:240px"><canvas id="cafeCostChart"></canvas></div>
+    </div>
+
+  </div>
+</div>
+<div class="footer" id="footerEl" style="display: block;">dilloquest · 근태 분석 대시보드</div>
+
+<script>
+/* ═══════════════════════════════════════
+   상수 & 색상
+═══════════════════════════════════════ */
+const EXCLUDE = ['딜로퀘스트','김종율','이태성'];
+const HOLIDAY_TYPES = ['쉬는날','주휴일','휴무일','주휴일, 쉬는날'];
+const EARLY_MONTHS = ['2025-12','2026-01']; // 주기연장(법정근로 내) 사용 기간
+const VAC_TYPES = ['연차','입사휴가'];
+const ORG_COLORS = {'아트팀':'#1D9E75','아트앤테크팀':'#8B5CF6','기획팀':'#D85A30','프로그램팀':'#378ADD','경영지원팀':'#888780'};
+const ORG_CHIP = {'아트팀':'ca','아트앤테크팀':'cb','기획팀':'cc','프로그램팀':'cd','경영지원팀':'ce'};
+const POS_COLORS = {'팀장':'#D85A30','팀원':'#378ADD'};
+const POS_CHIP = {'팀장':'cl','팀원':'cm'};
+
+/* ═══════════════════════════════════════
+   유틸 함수
+═══════════════════════════════════════ */
+function toMin(val) {
+  if (val == null || val === '' || val === '0:00') return 0;
+  const s = String(val).trim();
+  if (!s || s === '0') return 0;
+  const p = s.split(':');
+  if (p.length < 2) return 0;
+  return parseInt(p[0]) * 60 + parseInt(p[1]);
+}
+function parseH(s) {
+  if (!s) return null;
+  const p = String(s).trim().split(':');
+  if (p.length < 2) return null;
+  return parseInt(p[0]) + parseInt(p[1]) / 60;
+}
+function isNextDay(s) {
+  if (!s) return false;
+  const h = parseInt(String(s).trim().split(':')[0]);
+  return h < 6;
+}
+function mLabel(m) {
+  const [y, mo] = m.split('-');
+  return `${y.slice(2)}년 ${mo}월`;
+}
+function getKey(n, m, d) { return `${n}_${m}_${d}`; }
+
+/* ═══════════════════════════════════════
+   공유 저장소 (window.storage - 모든 사용자 공유)
+═══════════════════════════════════════ */
+const REASON_KEY = 'hr_reasons_v3';
+const SUMMARY_KEY = 'hr_summary_v2';
+
+// 공유 저장소 사용 (window.storage가 있으면 공유, 없으면 localStorage fallback)
+async function sharedGet(key) {
+  if (window.storage) {
+    try { const r = await window.storage.get(key, true); return r ? JSON.parse(r.value) : {}; } catch { return {}; }
+  }
+  try { return JSON.parse(localStorage.getItem(key) || '{}'); } catch { return {}; }
+}
+async function sharedSet(key, val) {
+  if (window.storage) {
+    try { await window.storage.set(key, JSON.stringify(val), true); } catch {}
+  }
+  localStorage.setItem(key, JSON.stringify(val));
+}
+
+// 동기 캐시 (렌더링용)
+let _reasons = {};
+let _summaries = {};
+async function initStorage() {
+  _reasons = await sharedGet(REASON_KEY);
+  _summaries = await sharedGet(SUMMARY_KEY);
+}
+function loadReasons() { return _reasons; }
+async function saveReason(k, v) { _reasons[k] = v; await sharedSet(REASON_KEY, _reasons); }
+function loadSummaries() { return _summaries; }
+
+/* ═══════════════════════════════════════
+   차트 인스턴스 관리
+═══════════════════════════════════════ */
+const charts = {};
+function destroyChart(id) { if (charts[id]) { charts[id].destroy(); delete charts[id]; } }
+
+/* ═══════════════════════════════════════
+   스마트 라벨 플러그인
+═══════════════════════════════════════ */
+const smartLabel = {
+  id: 'smartLabel',
+  afterDatasetsDraw(chart) {
+    const { ctx, data, chartArea: { top, bottom } } = chart;
+    const pts = [];
+    data.datasets.forEach((ds, di) => {
+      if (ds._skip || ds.borderDash) return;
+      const meta = chart.getDatasetMeta(di);
+      if (meta.hidden) return;
+      meta.data.forEach((el, i) => {
+        const val = ds.data[i];
+        if (val == null) return;
+        pts.push({ x: el.x, y: el.y, val, color: ds.borderColor || '#444' });
+      });
+    });
+    const placed = [];
+    pts.forEach(pt => {
+      ctx.font = 'bold 10px Apple SD Gothic Neo,sans-serif';
+      const tw = ctx.measureText(pt.val.toFixed(2)).width + 4;
+      const candidates = [{ dx: 0, dy: -14 }, { dx: 0, dy: 14 }, { dx: 0, dy: -26 }, { dx: 0, dy: 26 }, { dx: tw * 0.5, dy: -14 }, { dx: -tw * 0.5, dy: -14 }];
+      let chosen = candidates[0];
+      for (const c of candidates) {
+        const tx = pt.x + c.dx, ty = pt.y + c.dy;
+        if (ty < top + 6 || ty > bottom - 4) continue;
+        if (!placed.some(p => Math.abs(p.x - tx) < tw && Math.abs(p.y - ty) < 13)) { chosen = c; break; }
+      }
+      const fx = pt.x + chosen.dx, fy = Math.max(top + 8, Math.min(bottom - 4, pt.y + chosen.dy));
+      placed.push({ x: fx, y: fy });
+      ctx.save();
+      const tw2 = ctx.measureText(pt.val.toFixed(2)).width;
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      ctx.fillRect(fx - tw2 / 2 - 2, fy - 7, tw2 + 4, 13);
+      ctx.fillStyle = pt.color || '#444';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(pt.val.toFixed(2), fx, fy);
+      ctx.restore();
+    });
+  }
+};
+const barLabel = {
+  id: 'barLabel',
+  afterDatasetsDraw(chart) {
+    const { ctx } = chart;
+    chart.data.datasets.forEach((ds, di) => {
+      const meta = chart.getDatasetMeta(di);
+      if (meta.hidden) return;
+      meta.data.forEach((el, i) => {
+        const val = ds.data[i];
+        if (!val) return;
+        ctx.save();
+        ctx.font = 'bold 10px Apple SD Gothic Neo,sans-serif';
+        const tw = ctx.measureText(val.toFixed(2)).width;
+        ctx.fillStyle = 'rgba(255,255,255,0.85)';
+        ctx.fillRect(el.x - tw / 2 - 2, el.y - 17, tw + 4, 13);
+        ctx.fillStyle = '#444'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(val.toFixed(2), el.x, el.y - 11);
+        ctx.restore();
+      });
+    });
+  }
+};
+
+/* ═══════════════════════════════════════
+   엑셀 파일 처리 & 집계
+═══════════════════════════════════════ */
+async function processFile(file) {
+  await initStorage();
+  document.getElementById('loadingBar').classList.add('active');
+  const reader = new FileReader();
+  reader.onload = async e => {
+    try {
+      const wb = XLSX.read(e.target.result, { type: 'array', cellDates: true });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const raw = XLSX.utils.sheet_to_json(ws, { defval: '' });
+      parseCostSheet(wb);
+      costChartsInited = false;
+      const result = aggregate(raw);
+      await renderDashboard(result, file.name);
+    } catch (err) {
+      alert('파일 처리 중 오류가 발생했습니다: ' + err.message);
+    } finally {
+      document.getElementById('loadingBar').classList.remove('active');
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function aggregate(raw) {
+  // 제외 & 날짜 파싱
+  const rows = raw.filter(r => !EXCLUDE.includes(String(r['이름'] || '').trim())).map(r => {
+    let d = r['날짜'];
+    if (d instanceof Date) { /* ok */ }
+    else if (typeof d === 'number') d = new Date(Math.round((d - 25569) * 86400 * 1000));
+    else d = new Date(String(d));
+    const m = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    const dd = `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return {
+      이름: String(r['이름'] || '').trim(),
+      조직: String(r['조직'] || '').trim(),
+      직책: String(r['직책'] || '').trim(),
+      월: m, 날짜: d, dd,
+      휴일구분: String(r['휴일구분'] || '').trim(),
+      휴가정책: String(r['휴가정책'] || '').trim(),
+      시작시각: String(r['시작시각'] || '').trim(),
+      종료시각: String(r['종료시각'] || '').trim(),
+      총근무: toMin(r['총 근무']),
+      휴가시간: toMin(r['휴가시간']),
+      연장: toMin(r['연장']),
+      연장법정: toMin(r['연장 (법정근로 내)']),
+      주기연장법정: toMin(r['주기연장 (법정근로 내)']),
+    };
+  }).filter(r => r.이름);
+
+  const MONTHS = [...new Set(rows.map(r => r.월))].sort();
+
+  // 주기연장 별도 집계 (휴일 포함 전체)
+  const periOt = {}; // {월:{조직:{이름:분}}}
+  rows.forEach(r => {
+    if (r.주기연장법정 > 0) {
+      if (!periOt[r.월]) periOt[r.월] = {};
+      if (!periOt[r.월][r.이름]) periOt[r.월][r.이름] = 0;
+      periOt[r.월][r.이름] += r.주기연장법정;
+    }
+  });
+
+  // 휴일 제외 (근무 집계용)
+  const workRows = rows.filter(r => !HOLIDAY_TYPES.includes(r.휴일구분));
+
+  // 날짜 기준 중복 합산
+  const dayMap = {};
+  workRows.forEach(r => {
+    const k = `${r.이름}__${r.월}__${r.dd}`;
+    if (!dayMap[k]) {
+      dayMap[k] = { ...r, 총근무: 0, 휴가시간: 0, 연장: 0, 연장법정: 0, hasVac: false, 시작시각: '', 종료시각: '' };
+    }
+    const e = dayMap[k];
+    e.총근무 += r.총근무; e.휴가시간 += r.휴가시간;
+    e.연장 += r.연장; e.연장법정 += r.연장법정;
+    if (VAC_TYPES.includes(r.휴가정책)) e.hasVac = true;
+    if (r.휴가시간 > 0) e.hasVacTime = true;
+    // 시작: 더 이른 것, 종료: 더 늦은 것 (문자열 비교)
+    if (r.시작시각 && (!e.시작시각 || r.시작시각 < e.시작시각)) e.시작시각 = r.시작시각;
+    if (r.종료시각 && (!e.종료시각 || r.종료시각 > e.종료시각)) e.종료시각 = r.종료시각;
+  });
+  const dm = Object.values(dayMap);
+
+  dm.forEach(r => {
+    r.조정근무 = r.총근무 + r.휴가시간;
+    r.근무일 = r.조정근무 > 0 ? 1 : 0;
+    // 연장합산: EARLY는 나중에 periOt로 덮어씌움
+    r.연장합산 = EARLY_MONTHS.includes(r.월) ? 0 : r.연장 + r.연장법정;
+    r.휴가개수 = r.hasVac ? (r.휴가시간 === 240 ? 0.5 : r.휴가시간 >= 480 ? 1 : 0) : 0;
+  });
+
+  // 집계 함수
+  function agg(arr, keys) {
+    const map = {};
+    arr.forEach(r => {
+      const k = keys.map(k => r[k]).join('__') + '__' + r.월;
+      if (!map[k]) map[k] = { keys: keys.map(k => r[k]), 월: r.월, 이름들: new Set(), 근무일합: 0, 조정합: 0, 연장합: 0, 휴가합: 0 };
+      map[k].이름들.add(r.이름);
+      map[k].근무일합 += r.근무일;
+      map[k].조정합 += r.조정근무;
+      map[k].연장합 += r.연장합산;
+      map[k].휴가합 += r.휴가개수;
+    });
+    return Object.values(map).map(v => ({
+      ...Object.fromEntries(keys.map((k, i) => [k, v.keys[i]])),
+      월: v.월, 인원: v.이름들.size,
+      근무일합: v.근무일합, 조정합: v.조정합,
+      연장합: v.연장합, 휴가합: v.휴가합,
+      일평균: +(v.조정합 / Math.max(v.근무일합, 1) / 60).toFixed(2),
+      인당연장: +(v.연장합 / v.이름들.size / 60).toFixed(2),
+      인당휴가: +(v.휴가합 / v.이름들.size).toFixed(2),
+    }));
+  }
+
+  // EARLY 월 주기연장 적용
+  function applyPeriOt(aggArr, groupKey) {
+    return aggArr.map(row => {
+      if (!EARLY_MONTHS.includes(row.월)) return row;
+      // 해당 그룹의 이름들 찾기
+      const names = dm.filter(r => r[groupKey] === row[groupKey] && r.월 === row.월).map(r => r.이름);
+      const uniqNames = [...new Set(names)];
+      let periSum = 0;
+      uniqNames.forEach(n => { periSum += (periOt[row.월]?.[n] || 0); });
+      const n = row.인원;
+      return { ...row, 인당연장: +(periSum / n / 60).toFixed(2) };
+    });
+  }
+  function applyPeriOtTotal(arr) {
+    return arr.map(row => {
+      if (!EARLY_MONTHS.includes(row.월)) return row;
+      let periSum = Object.values(periOt[row.월] || {}).reduce((a, b) => a + b, 0);
+      return { ...row, 인당연장: +(periSum / row.인원 / 60).toFixed(2) };
+    });
+  }
+
+  let totalArr = applyPeriOtTotal(agg(dm, []));
+  // agg(dm,[]) → 전사는 모든 행을 하나의 그룹으로 → 별도 처리
+  {
+    const map = {};
+    dm.forEach(r => {
+      const k = r.월;
+      if (!map[k]) map[k] = { 월: r.월, 이름들: new Set(), 근무일합: 0, 조정합: 0, 연장합: 0, 휴가합: 0 };
+      map[k].이름들.add(r.이름);
+      map[k].근무일합 += r.근무일;
+      map[k].조정합 += r.조정근무;
+      map[k].연장합 += r.연장합산;
+      map[k].휴가합 += r.휴가개수;
+    });
+    totalArr = Object.values(map).map(v => {
+      let periSum = EARLY_MONTHS.includes(v.월) ? Object.values(periOt[v.월] || {}).reduce((a, b) => a + b, 0) : v.연장합;
+      const n = v.이름들.size;
+      return {
+        월: v.월, 인원: n,
+        일평균: +(v.조정합 / Math.max(v.근무일합, 1) / 60).toFixed(2),
+        인당연장: +(periSum / n / 60).toFixed(2),
+        인당휴가: +(v.휴가합 / n).toFixed(2),
+      };
+    }).sort((a, b) => a.월.localeCompare(b.월));
+  }
+
+  let orgArr = applyPeriOt(agg(dm, ['조직']), '조직').sort((a, b) => a.조직.localeCompare(b.조직) || a.월.localeCompare(b.월));
+  let posArr = applyPeriOt(agg(dm, ['직책']), '직책').sort((a, b) => a.직책.localeCompare(b.직책) || a.월.localeCompare(b.월));
+
+  // 이상 출퇴근
+  const anomaly = dm.filter(r =>
+    !r.hasVacTime && r.시작시각 && r.종료시각 &&
+    !isNextDay(r.종료시각) &&
+    (parseH(r.시작시각) > 10 || parseH(r.종료시각) < 17)
+  ).map(r => {
+    const sh = parseH(r.시작시각), oh = parseH(r.종료시각);
+    return { ...r, late: sh > 10 ? Math.round((sh - 10) * 60) : 0, early: oh < 17 ? Math.round((17 - oh) * 60) : 0 };
+  }).sort((a, b) => {
+    const mi = MONTHS.indexOf(b.월) - MONTHS.indexOf(a.월);
+    return mi !== 0 ? mi : a.이름.localeCompare(b.이름) || a.dd.localeCompare(b.dd);
+  });
+
+  const orgs = [...new Set(dm.map(r => r.조직))].sort();
+  const poses = [...new Set(dm.map(r => r.직책))].sort();
+
+  return { MONTHS, totalArr, orgArr, posArr, orgs, poses, anomaly };
+}
+
+/* ═══════════════════════════════════════
+   렌더링
+═══════════════════════════════════════ */
+let G = null; // global data
+
+async function renderDashboard(data, fileName) {
+  G = data;
+  const { MONTHS, totalArr, orgArr, posArr, orgs, poses, anomaly } = data;
+  const ML = MONTHS.map(m => mLabel(m));
+
+  // UI 표시
+  document.getElementById('dropOverlay').classList.add('hidden');
+  document.getElementById('topbar').style.display = 'flex';
+  document.getElementById('tabsBar').style.display = 'flex';
+  document.getElementById('mainContent').style.display = 'block';
+  document.getElementById('footerEl').style.display = 'block';
+  document.getElementById('currentFileName').textContent = fileName;
+  document.getElementById('uploadStatus').textContent = `${MONTHS[0]} ~ ${MONTHS[MONTHS.length-1]} · ${totalArr[totalArr.length-1]?.인원 || 0}명`;
+  const exportBtn = document.getElementById('exportHtmlBtn');
+  exportBtn.style.display = 'flex';
+
+  // Summary 월 select 업데이트
+  const sm = document.getElementById('summaryMonth');
+  sm.innerHTML = '';
+  [...MONTHS].reverse().forEach(m => {
+    const opt = document.createElement('option');
+    opt.value = m; opt.textContent = mLabel(m);
+    sm.appendChild(opt);
+  });
+  await loadSummaryForMonth(MONTHS[MONTHS.length - 1]);
+
+  // KPI
+  const latest = totalArr[totalArr.length - 1];
+  const prev = totalArr[totalArr.length - 2] || latest;
+  const avg5ot = (totalArr.reduce((s, r) => s + r.인당연장, 0) / totalArr.length).toFixed(2);
+  const dailyDiff = (latest.일평균 - prev.일평균).toFixed(2);
+  const otDiff = (latest.인당연장 - prev.인당연장).toFixed(2);
+  const vacDiff = (latest.인당휴가 - prev.인당휴가).toFixed(2);
+  document.getElementById('kpiGrid').innerHTML = `
+    <div class="kpi"><div class="kpi-label">최근월 일평균 근로 (${mLabel(latest.월)})</div>
+      <div class="kpi-value">${latest.일평균.toFixed(2)}<span class="kpi-unit">h</span></div>
+      <div class="kpi-sub">전월(${mLabel(prev.월)}) ${prev.일평균.toFixed(2)}h 대비</div>
+      <span class="kpi-badge ${dailyDiff>0?'bw':'bo'}">${dailyDiff>0?'▲':'▼'} 전월 대비 ${dailyDiff>0?'+':''}${dailyDiff}h</span></div>
+    <div class="kpi"><div class="kpi-label">최근월 인당 월연장 (${mLabel(latest.월)})</div>
+      <div class="kpi-value">${latest.인당연장.toFixed(2)}<span class="kpi-unit">h</span></div>
+      <div class="kpi-sub">전월(${mLabel(prev.월)}) ${prev.인당연장.toFixed(2)}h 대비</div>
+      <span class="kpi-badge ${otDiff>0?'bw':'bo'}">${otDiff>0?'▲':'▼'} 전월 대비 ${otDiff>0?'+':''}${otDiff}h</span></div>
+    <div class="kpi"><div class="kpi-label">최근월 인당 사용연차 (${mLabel(latest.월)})</div>
+      <div class="kpi-value">${latest.인당휴가.toFixed(2)}<span class="kpi-unit">개</span></div>
+      <div class="kpi-sub">전월(${mLabel(prev.월)}) ${prev.인당휴가.toFixed(2)}개 대비</div>
+      <span class="kpi-badge ${vacDiff>=0?'bn':'by'}">${vacDiff>=0?'▲':'▼'} 전월 대비 ${vacDiff>=0?'+':''}${vacDiff}개</span></div>
+    <div class="kpi"><div class="kpi-label">${MONTHS.length}개월 평균 월연장</div>
+      <div class="kpi-value">${avg5ot}<span class="kpi-unit">h</span></div>
+      <div class="kpi-sub">${ML[0]} ~ ${ML[ML.length-1]} 전사 평균</div>
+      <span class="kpi-badge by">추이 증가 중</span></div>`;
+
+  // 차트 공통
+  const mkY = (min, max, step) => ({ min, max, grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { font: { size: 11 }, stepSize: step, callback: v => v % step < 0.001 ? v.toFixed(step < 1 ? 1 : 0) + 'h' : null } });
+  const mkX = () => ({ grid: { display: false }, ticks: { font: { size: 11 } } });
+
+  // 전사 일평균
+  destroyChart('trendDaily');
+  charts['trendDaily'] = new Chart(document.getElementById('trendDaily'), {
+    type: 'line', plugins: [smartLabel],
+    data: { labels: ML, datasets: [
+      { label: '일평균근로', data: totalArr.map(r => r.일평균), borderColor: '#3949AB', backgroundColor: '#3949AB12', pointBackgroundColor: '#3949AB', pointRadius: 5, tension: 0.3, fill: true, borderWidth: 2.5 },
+      { label: '기준 8h', data: ML.map(() => 8), borderColor: '#E24B4A', borderWidth: 1.5, borderDash: [5, 5], pointRadius: 0, _skip: true }
+    ]},
+    options: { responsive: true, maintainAspectRatio: false, layout: { padding: { top: 22 } },
+      plugins: { legend: { display: false }, smartLabel: {}, tooltip: { callbacks: { label: c => c.dataset.label + ': ' + c.parsed.y?.toFixed(2) + 'h' } } },
+      scales: { x: mkX(), y: mkY(7.5, Math.max(9.5, Math.ceil(Math.max(...totalArr.map(r => r.일평균)) * 2) / 2), 0.5) } }
+  });
+
+  // 전사 연장
+  destroyChart('trendOt');
+  const maxOt = Math.max(...totalArr.map(r => r.인당연장), 1);
+  charts['trendOt'] = new Chart(document.getElementById('trendOt'), {
+    type: 'bar', plugins: [barLabel],
+    data: { labels: ML, datasets: [{ label: '인당월연장', data: totalArr.map(r => r.인당연장), backgroundColor: totalArr.map(r => r.인당연장 >= 12 ? '#C0392BAA' : '#3949ABAA'), borderRadius: 6, borderSkipped: false }] },
+    options: { responsive: true, maintainAspectRatio: false, layout: { padding: { top: 22 } },
+      plugins: { legend: { display: false }, barLabel: {}, tooltip: { callbacks: { label: c => c.parsed.y.toFixed(2) + 'h' } } },
+      scales: { x: mkX(), y: { min: 0, max: Math.ceil(maxOt / 4) * 4 + 4, grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { font: { size: 11 }, stepSize: 4, callback: v => v % 4 === 0 ? v + 'h' : null } } } }
+  });
+
+  // 전사 테이블
+  document.getElementById('overviewTb').innerHTML = totalArr.map(r =>
+    `<tr><td style="font-weight:600">${mLabel(r.월)}</td>
+    <td class="num ${r.일평균>=9?'hi-d':''}">${r.일평균.toFixed(2)}</td>
+    <td class="num ${r.인당연장>=12?'warn-ot':''}">${r.인당연장>0?r.인당연장.toFixed(2):'—'}</td>
+    <td class="num">${r.인당휴가.toFixed(2)}</td></tr>`).join('');
+
+  // 조직별 차트
+  const orgLg = document.getElementById('orgLg');
+  orgLg.innerHTML = Object.entries(ORG_COLORS).filter(([o]) => orgs.includes(o))
+    .map(([o, c]) => `<div class="li"><div class="ld" style="background:${c}"></div>${o}</div>`).join('');
+
+  const mkOrgDs = key => orgs.map(org => {
+    const vals = MONTHS.map(m => { const r = orgArr.find(x => x.조직 === org && x.월 === m); return r ? r[key] : null; });
+    return { label: org, data: vals, borderColor: ORG_COLORS[org] || '#888', backgroundColor: (ORG_COLORS[org] || '#888') + '12', pointBackgroundColor: ORG_COLORS[org] || '#888', pointRadius: 4, tension: 0.3, borderWidth: 2, spanGaps: true };
+  });
+
+  const maxOrgDaily = Math.max(...orgArr.map(r => r.일평균), 9);
+  const maxOrgOt = Math.max(...orgArr.map(r => r.인당연장), 5);
+
+  destroyChart('orgDaily');
+  charts['orgDaily'] = new Chart(document.getElementById('orgDaily'), {
+    type: 'line', plugins: [smartLabel],
+    data: { labels: ML, datasets: mkOrgDs('일평균') },
+    options: { responsive: true, maintainAspectRatio: false, layout: { padding: { top: 22 } },
+      plugins: { legend: { display: false }, smartLabel: {}, tooltip: { callbacks: { label: c => c.dataset.label + ': ' + (c.parsed.y != null ? c.parsed.y.toFixed(2) : '—') + 'h' } } },
+      scales: { x: mkX(), y: mkY(7.0, Math.ceil(maxOrgDaily * 2) / 2 + 0.5, 0.5) } }
+  });
+
+  destroyChart('orgOt');
+  charts['orgOt'] = new Chart(document.getElementById('orgOt'), {
+    type: 'line', plugins: [smartLabel],
+    data: { labels: ML, datasets: mkOrgDs('인당연장') },
+    options: { responsive: true, maintainAspectRatio: false, layout: { padding: { top: 22 } },
+      plugins: { legend: { display: false }, smartLabel: {}, tooltip: { callbacks: { label: c => c.dataset.label + ': ' + (c.parsed.y != null ? c.parsed.y.toFixed(2) : '—') + 'h' } } },
+      scales: { x: mkX(), y: mkY(0, Math.ceil(maxOrgOt / 5) * 5 + 5, 5) } }
+  });
+
+  // 조직별 테이블
+  document.getElementById('orgTb').innerHTML = orgs.map((org, oi) =>
+    MONTHS.map((m, mi) => {
+      const r = orgArr.find(x => x.조직 === org && x.월 === m);
+      const alt = oi % 2 === 0 ? 'background:#F8F9FF' : '';
+      return `<tr style="${alt}">
+        ${mi === 0 ? `<td rowspan="${MONTHS.length}" style="font-weight:600;vertical-align:middle"><span class="chip ${ORG_CHIP[org] || 'ce'}">${org}</span></td>` : ''}
+        <td class="ctr">${mLabel(m)}</td>
+        ${r ? `<td class="num ${r.일평균>=9?'hi-d':''}">${r.일평균.toFixed(2)}</td><td class="num ${r.인당연장>=12?'warn-ot':''}">${r.인당연장>0?r.인당연장.toFixed(2):'—'}</td><td class="num">${r.인당휴가.toFixed(2)}</td>`
+             : `<td colspan="3" style="color:#CCC;text-align:center">해당없음</td>`}
+      </tr>`;
+    }).join('')
+  ).join('');
+
+  // 직책별 차트
+  const mkPosDs = key => Object.keys(POS_COLORS).filter(p => poses.includes(p)).map(pos => {
+    const vals = MONTHS.map(m => { const r = posArr.find(x => x.직책 === pos && x.월 === m); return r ? r[key] : null; });
+    return { label: pos, data: vals, borderColor: POS_COLORS[pos], backgroundColor: POS_COLORS[pos] + '12', pointBackgroundColor: POS_COLORS[pos], pointRadius: 5, tension: 0.3, borderWidth: 2.5, spanGaps: true };
+  });
+
+  const maxPosOt = Math.max(...posArr.map(r => r.인당연장), 5);
+
+  destroyChart('posDaily');
+  charts['posDaily'] = new Chart(document.getElementById('posDaily'), {
+    type: 'line', plugins: [smartLabel],
+    data: { labels: ML, datasets: mkPosDs('일평균') },
+    options: { responsive: true, maintainAspectRatio: false, layout: { padding: { top: 22 } },
+      plugins: { legend: { display: true, labels: { font: { size: 11 }, boxWidth: 12 } }, smartLabel: {}, tooltip: { callbacks: { label: c => c.dataset.label + ': ' + c.parsed.y?.toFixed(2) + 'h' } } },
+      scales: { x: mkX(), y: mkY(7.0, Math.ceil(maxOrgDaily * 2) / 2 + 0.5, 0.5) } }
+  });
+
+  destroyChart('posOt');
+  charts['posOt'] = new Chart(document.getElementById('posOt'), {
+    type: 'line', plugins: [smartLabel],
+    data: { labels: ML, datasets: mkPosDs('인당연장') },
+    options: { responsive: true, maintainAspectRatio: false, layout: { padding: { top: 22 } },
+      plugins: { legend: { display: true, labels: { font: { size: 11 }, boxWidth: 12 } }, smartLabel: {}, tooltip: { callbacks: { label: c => c.dataset.label + ': ' + c.parsed.y?.toFixed(2) + 'h' } } },
+      scales: { x: mkX(), y: mkY(0, Math.ceil(maxPosOt / 5) * 5 + 5, 5) } }
+  });
+
+  // 직책별 테이블
+  document.getElementById('posTb').innerHTML = poses.map((pos, pi) =>
+    MONTHS.map((m, mi) => {
+      const r = posArr.find(x => x.직책 === pos && x.월 === m);
+      const alt = pi === 0 ? 'background:#FFF8F5' : '';
+      return `<tr style="${alt}">
+        ${mi === 0 ? `<td rowspan="${MONTHS.length}" style="font-weight:700;vertical-align:middle"><span class="chip ${POS_CHIP[pos] || 'cm'}">${pos}</span></td>` : ''}
+        <td class="ctr">${mLabel(m)}</td>
+        ${r ? `<td class="num ${r.일평균>=9?'hi-d':''}">${r.일평균.toFixed(2)}</td><td class="num ${r.인당연장>=12?'warn-ot':''}">${r.인당연장>0?r.인당연장.toFixed(2):'—'}</td><td class="num">${r.인당휴가.toFixed(2)}</td>`
+             : `<td colspan="3" style="color:#CCC;text-align:center">해당없음</td>`}
+      </tr>`;
+    }).join('')
+  ).join('');
+
+  // 이상 출퇴근 필터 옵션 업데이트
+  const fMonth = document.getElementById('f-month');
+  const fOrg = document.getElementById('f-org');
+  const fPos = document.getElementById('f-pos');
+  fMonth.innerHTML = '<option value="">전체</option>' + [...MONTHS].reverse().map(m => `<option value="${m}">${mLabel(m)}</option>`).join('');
+  fOrg.innerHTML = '<option value="">전체</option>' + orgs.map(o => `<option>${o}</option>`).join('');
+  fPos.innerHTML = '<option value="">전체</option>' + poses.map(p => `<option>${p}</option>`).join('');
+
+  // 이상 출퇴근 테이블
+  const reasons = loadReasons();
+  document.getElementById('anomalyTb').innerHTML = anomaly.map((r, i) => {
+    const isLate = r.late > 0, isEarly = r.early > 0;
+    const inStyle = isLate ? 'background:#FFF0EE;font-weight:700;color:#C0392B' : '';
+    const outStyle = isEarly ? 'background:#EEF2FF;font-weight:700;color:#3949AB' : '';
+    const key = getKey(r.이름, r.월, r.dd);
+    const saved = reasons[key] || '';
+    let vBadge = '';
+    if (r.late > 0) vBadge += `<span class="vbadge vbadge-late">출근 +${r.late}분</span> `;
+    if (r.early > 0) {
+      const h = Math.floor(r.early / 60), mm = r.early % 60;
+      vBadge += `<span class="vbadge vbadge-early">${h > 0 ? h + 'h ' : ''}${mm}분 조기퇴근</span>`;
+    }
+    return `<tr data-m="${r.월}" data-o="${r.조직}" data-p="${r.직책}" data-n="${r.이름}" style="${i%2===0?'background:#F8F9FF':''}">
+      <td style="font-weight:600">${r.이름}</td>
+      <td><span class="chip ${ORG_CHIP[r.조직]||'ce'}">${r.조직}</span></td>
+      <td class="ctr"><span class="chip ${POS_CHIP[r.직책]||'cm'}">${r.직책}</span></td>
+      <td class="ctr">${mLabel(r.월)}</td>
+      <td class="ctr">${r.dd}</td>
+      <td class="ctr" style="${inStyle}">${r.시작시각}</td>
+      <td class="ctr" style="${outStyle}">${r.종료시각}</td>
+      <td class="ctr" style="white-space:normal;min-width:110px">${vBadge}</td>
+      <td><div style="display:flex;align-items:center;gap:4px">
+        <textarea class="reason-input ${saved?'saved':''}" id="reason_${key}" rows="1"
+          placeholder="사유 입력..."
+          onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();saveReasonUI('${key}')}"
+        >${saved}</textarea>
+        <button class="save-btn" onclick="saveReasonUI('${key}')">저장</button>
+      </div></td>
+    </tr>`;
+  }).join('');
+
+  updateCount();
+}
+
+/* ═══════════════════════════════════════
+   이벤트 핸들러
+═══════════════════════════════════════ */
+function showPage(id, el) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('page-' + id).classList.add('active');
+  el.classList.add('active');
+  if (id === 'cost') renderCostCharts();
+}
+
+// 파일 입력
+document.getElementById('fileInput').addEventListener('change', e => {
+  if (e.target.files[0]) processFile(e.target.files[0]);
+});
+
+// 드롭박스 (초기 화면)
+const dropBox = document.getElementById('dropBox');
+dropBox.addEventListener('dragover', e => { e.preventDefault(); dropBox.classList.add('drag-over'); });
+dropBox.addEventListener('dragleave', () => dropBox.classList.remove('drag-over'));
+dropBox.addEventListener('drop', e => {
+  e.preventDefault(); dropBox.classList.remove('drag-over');
+  if (e.dataTransfer.files[0]) processFile(e.dataTransfer.files[0]);
+});
+
+// 전체 화면 드래그 (대시보드 열린 후)
+const globalDrop = document.getElementById('globalDrop');
+let dragCount = 0;
+document.addEventListener('dragenter', e => {
+  if (!G) return;
+  dragCount++;
+  globalDrop.classList.add('active');
+});
+document.addEventListener('dragleave', () => {
+  if (!G) return;
+  dragCount--;
+  if (dragCount <= 0) { dragCount = 0; globalDrop.classList.remove('active'); }
+});
+document.addEventListener('dragover', e => e.preventDefault());
+document.addEventListener('drop', e => {
+  e.preventDefault(); dragCount = 0; globalDrop.classList.remove('active');
+  if (e.dataTransfer.files[0] && G) processFile(e.dataTransfer.files[0]);
+});
+
+// 상단 미니 업로드존
+const uploadZoneMini = document.getElementById('uploadZoneMini');
+uploadZoneMini.addEventListener('dragover', e => { e.preventDefault(); uploadZoneMini.classList.add('drag-over'); });
+uploadZoneMini.addEventListener('dragleave', () => uploadZoneMini.classList.remove('drag-over'));
+uploadZoneMini.addEventListener('drop', e => {
+  e.preventDefault(); uploadZoneMini.classList.remove('drag-over');
+  if (e.dataTransfer.files[0]) processFile(e.dataTransfer.files[0]);
+});
+
+/* Summary */
+async function saveSummary() {
+  const m = document.getElementById('summaryMonth').value;
+  const t = document.getElementById('summaryText').value;
+  _summaries[m] = t; await sharedSet(SUMMARY_KEY, _summaries);
+  const btn = document.getElementById('summarySaveBtn');
+  btn.textContent = '✓ 저장됨'; btn.classList.add('saved');
+  document.getElementById('summaryStatus').textContent = `${mLabel(m)} 저장 완료`;
+  document.getElementById('summaryStatus').style.color = '#1D9E75';
+  setTimeout(() => { btn.textContent = '저장'; btn.classList.remove('saved'); }, 1500);
+}
+function onSummaryChange() {
+  document.getElementById('summaryStatus').textContent = '저장되지 않음';
+  document.getElementById('summaryStatus').style.color = '#BEC5D4';
+}
+async function loadSummaryForMonth(m) {
+  const s = loadSummaries();
+  document.getElementById('summaryText').value = s[m] || '';
+  const saved = !!s[m];
+  const sm = document.getElementById('summaryMonth');
+  const label = sm.options[sm.selectedIndex]?.text || mLabel(m);
+  document.getElementById('summaryStatus').textContent = saved ? `${label} 저장됨` : '저장되지 않음';
+  document.getElementById('summaryStatus').style.color = saved ? '#1D9E75' : '#BEC5D4';
+}
+document.getElementById('summaryMonth').addEventListener('change', async function () { await loadSummaryForMonth(this.value); });
+
+/* 이상 출퇴근 */
+async function saveReasonUI(key) {
+  const el = document.getElementById('reason_' + key);
+  if (!el) return;
+  await saveReason(key, el.value);
+  el.classList.add('saved');
+  const btn = el.nextElementSibling;
+  if (btn) { btn.textContent = '✓'; btn.style.background = '#1D9E75'; setTimeout(() => { btn.textContent = '저장'; btn.style.background = '#3949AB'; }, 1200); }
+}
+function applyFilter() {
+  const fm = document.getElementById('f-month').value;
+  const fo = document.getElementById('f-org').value;
+  const fp = document.getElementById('f-pos').value;
+  const fn = document.getElementById('f-name').value.trim();
+  let vis = 0;
+  document.querySelectorAll('#anomalyTb tr').forEach(tr => {
+    const show = (!fm || tr.dataset.m === fm) && (!fo || tr.dataset.o === fo) && (!fp || tr.dataset.p === fp) && (!fn || tr.dataset.n.includes(fn));
+    tr.style.display = show ? '' : 'none';
+    if (show) vis++;
+  });
+  updateCount(vis);
+}
+function resetFilter() {
+  ['f-month', 'f-org', 'f-pos'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('f-name').value = '';
+  applyFilter();
+}
+function updateCount(n) {
+  const el = document.getElementById('anomaly-count');
+  const total = G?.anomaly?.length || 0;
+  el.textContent = n != null && n !== total ? `${n}/${total}건 표시` : `총 ${total}건`;
+}
+async function exportReasons() {
+  const r = loadReasons();
+  const rows = [['이름', '조직', '직책', '월', '날짜', '시작', '종료', '지각(분)', '조기퇴근(분)', '사유']];
+  (G?.anomaly || []).forEach(a => rows.push([a.이름, a.조직, a.직책, mLabel(a.월), a.dd, a.시작시각, a.종료시각, a.late || '', a.early || '', r[getKey(a.이름, a.월, a.dd)] || '']));
+  const csv = rows.map(r => r.map(c => '"' + String(c || '').replace(/"/g, '""') + '"').join(',')).join('\n');
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = '이상출퇴근_사유.csv'; a.click();
+  URL.revokeObjectURL(url);
+}
+
+/* ═══════════════════════════════════════
+   비용 현황 데이터 & 차트
+═══════════════════════════════════════ */
+const COST_MONTHS = ['25.12월','26.1월','26.2월','26.3월','26.4월'];
+
+// 비용 데이터 (엑셀 2번째 시트 파싱)
+let costData = {
+  ot: {
+    '기획팀':     [0,0,0,0,0],
+    '아트앤테크팀':[0,0,0,0,0],
+    '아트팀':     [0,0,19600,0,0],
+    '프로그램팀':  [0,0,0,0,0],
+    '경영지원팀':  [0,0,0,0,0],
+  },
+  common: {
+    used:   [230000,0,813129,167272,712739],
+    budget: [null,980000,2380000,3036871,4269599],
+    balance:[null,980000,1566871,2869599,3556860],
+    byOrg: {
+      '기획팀':     [0,0,240911,167272,210914],
+      '아트앤테크팀':[0,0,0,0,0],
+      '아트팀':     [120000,0,258181,0,501825],
+      '프로그램팀':  [110000,0,248182,0,0],
+      '경영지원팀':  [0,0,65855,0,0],
+    }
+  },
+  cafe: {
+    '법인카드 결제': [0,1234395,678137,817146,426799],
+    '커피(렌탈,원두)':[0,1090550,0,1111100,0],
+  },
+  asset: {
+    '기획팀':     [0,0,0,0,0],
+    '아트앤테크팀':[0,0,0,0,0],
+    '아트팀':     [0,0,0,0,0],
+    '프로그램팀':  [0,0,0,0,19950000],
+    '경영지원팀':  [0,0,0,0,2755400],
+    '기타':       [0,0,0,0,7920400],
+  },
+  teamSummary: {
+    '기획팀':     {asset:0,  ot:0, common:210914},
+    '아트앤테크팀':{asset:0,  ot:0, common:0},
+    '아트팀':     {asset:0,  ot:0, common:501825},
+    '프로그램팀':  {asset:19950000, ot:0, common:0},
+    '경영지원팀':  {asset:2755400,  ot:0, common:0},
+    '기타':       {asset:7920400,  ot:0, common:0},
+  }
+};
+
+// 엑셀 비용 시트 파싱 (파일 업로드 시 호출)
+function parseCostSheet(wb) {
+  const sheetName = wb.SheetNames.find(n => n.includes('비용'));
+  if (!sheetName) return;
+  const ws = wb.Sheets[sheetName];
+  const raw = XLSX.utils.sheet_to_json(ws, {header:1, defval:null});
+
+  const MONTHS_COLS = 8; // 월 컬럼 수 (최대)
+  let mLabels = [];
+
+  raw.forEach((row, ri) => {
+    const label = String(row[1] || '').trim();
+
+    // 월 헤더 행 파싱
+    if (label === '구분' && row[2] && String(row[2]).includes('월')) {
+      mLabels = row.slice(2).filter(v => v && String(v).includes('월')).map(v => String(v).trim());
+    }
+
+    // 야근교통비 섹션
+    if (label === '1. 야근교통비') {
+      costData.ot = {};
+      for (let r2 = ri+2; r2 < raw.length; r2++) {
+        const org = String(raw[r2][1] || '').trim();
+        if (!org || org === '합계' || !raw[r2][2]) break;
+        costData.ot[org] = raw[r2].slice(2, 2+mLabels.length).map(v => Number(v)||0);
+      }
+    }
+
+    // 공통운영비 섹션
+    if (label === '2. 공통운영비') {
+      costData.common.byOrg = {};
+      for (let r2 = ri+2; r2 < raw.length; r2++) {
+        const org = String(raw[r2][1] || '').trim();
+        if (!org) break;
+        const vals = raw[r2].slice(2, 2+mLabels.length).map(v => Number(v)||0);
+        if (org === '월초 가용예산') costData.common.budget = vals.map(v => v||null);
+        else if (org === '당월 사용액') costData.common.used = vals;
+        else if (org === '잔액') costData.common.balance = vals;
+        else costData.common.byOrg[org] = vals;
+      }
+    }
+
+    // 카페테리아 섹션
+    if (label === '3. 카페테리아 운영비') {
+      costData.cafe = {};
+      for (let r2 = ri+2; r2 < raw.length; r2++) {
+        const cat = String(raw[r2][1] || '').trim();
+        if (!cat || cat === '합계') break;
+        costData.cafe[cat] = raw[r2].slice(2, 2+mLabels.length).map(v => Number(v)||0);
+      }
+    }
+
+    // 팀별 요약 & asset 추출
+    if (label.includes('팀별 비용')) {
+      costData.teamSummary = {};
+      costData.asset = {};
+      for (let r2 = ri+2; r2 < raw.length; r2++) {
+        const org = String(raw[r2][1] || '').trim();
+        if (!org || org === '합계') break;
+        const assetVal = Number(raw[r2][2])||0;
+        costData.teamSummary[org] = {
+          asset: assetVal,
+          ot:    Number(raw[r2][3])||0,
+          common:Number(raw[r2][4])||0,
+        };
+        // asset은 최근월 데이터만 있으므로 마지막 인덱스에 설정
+        const arr = new Array(mLabels.length).fill(0);
+        arr[mLabels.length-1] = assetVal;
+        costData.asset[org] = arr;
+      }
+    }
+  });
+
+  if (mLabels.length) {
+    // COST_MONTHS 동적 업데이트
+    while (COST_MONTHS.length) COST_MONTHS.pop();
+    mLabels.forEach(m => COST_MONTHS.push(m));
+  }
+}
+
+function won(v) {
+  if (v >= 1000000) return (v/1000000).toFixed(1) + '백만';
+  if (v >= 10000) return Math.round(v/10000) + '만';
+  return v.toLocaleString();
+}
+function wonFull(v) { return v ? v.toLocaleString() + '원' : '—'; }
+
+const COST_ORG_COLORS = {
+  '기획팀':'#D85A30','아트앤테크팀':'#8B5CF6','아트팀':'#1D9E75',
+  '프로그램팀':'#378ADD','경영지원팀':'#888780','기타':'#BBBBBB'
+};
+
+let costChartsInited = false;
+const costCharts = {};
+
+/* 비용 차트 라벨 플러그인 (금액, 겹침 방지) */
+const costLabelPlugin = {
+  id:'costLabel',
+  afterDatasetsDraw(chart){
+    const {ctx, data, chartArea:{top,bottom}} = chart;
+    const pts = [];
+    data.datasets.forEach((ds,di)=>{
+      if(ds._noLabel) return;
+      const meta = chart.getDatasetMeta(di);
+      if(meta.hidden) return;
+      meta.data.forEach((el,i)=>{
+        const val = ds.data[i];
+        if(!val || val === 0) return;
+        pts.push({x:el.x, y:el.y, val, color: ds.borderColor || ds.backgroundColor || '#444', isBar: meta.type==='bar'});
+      });
+    });
+    // 겹침 방지 배치
+    const placed = [];
+    pts.forEach(pt=>{
+      const label = pt.val >= 1000000
+        ? (pt.val/1000000).toFixed(1)+'M'
+        : pt.val >= 10000
+          ? Math.round(pt.val/10000)+'만'
+          : pt.val.toLocaleString();
+      ctx.font = 'bold 9.5px Apple SD Gothic Neo,sans-serif';
+      const tw = ctx.measureText(label).width + 4;
+      const candidates = pt.isBar
+        ? [{dx:0,dy:-13},{dx:0,dy:-24},{dx:tw*0.6,dy:-13},{dx:-tw*0.6,dy:-13}]
+        : [{dx:0,dy:-13},{dx:0,dy:13},{dx:0,dy:-24},{dx:tw*0.6,dy:-13},{dx:-tw*0.6,dy:-13}];
+      let chosen = candidates[0];
+      for(const c of candidates){
+        const tx=pt.x+c.dx, ty=pt.y+c.dy;
+        if(ty<top+4||ty>bottom-2) continue;
+        if(!placed.some(p=>Math.abs(p.x-tx)<tw&&Math.abs(p.y-ty)<12)){chosen=c;break;}
+      }
+      const fx=pt.x+chosen.dx, fy=Math.max(top+8,Math.min(bottom-2,pt.y+chosen.dy));
+      placed.push({x:fx,y:fy});
+      ctx.save();
+      const tw2=ctx.measureText(label).width;
+      ctx.fillStyle='rgba(255,255,255,0.88)';
+      ctx.fillRect(fx-tw2/2-2,fy-6,tw2+4,12);
+      ctx.fillStyle = typeof pt.color==='string'&&pt.color.length>7 ? pt.color.slice(0,7) : (pt.color||'#333');
+      ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText(label, fx, fy);
+      ctx.restore();
+    });
+  }
+};
+
+function renderCostCharts() {
+  if (costChartsInited) return;
+  costChartsInited = true;
+
+  const mLabels = COST_MONTHS;
+  const lastIdx = mLabels.length - 1;
+
+  // KPI
+  const latestUsed = costData.common.used[lastIdx] || 0;
+  const prevUsed   = costData.common.used[lastIdx-1] || 0;
+  const latestBal  = costData.common.balance[lastIdx];
+  const latestCafe = Object.values(costData.cafe).reduce((s,arr)=>s+(arr[lastIdx]||0),0);
+  const prevCafe   = Object.values(costData.cafe).reduce((s,arr)=>s+(arr[lastIdx-1]||0),0);
+  const latestOt   = Object.values(costData.ot).reduce((s,arr)=>s+(arr[lastIdx]||0),0);
+  const latestAsset= Object.values(costData.asset||{}).reduce((s,arr)=>s+(arr[lastIdx]||0),0);
+
+  document.getElementById('ck1').textContent = latestUsed.toLocaleString()+'원';
+  document.getElementById('ck1sub').textContent='전월 대비 '+(latestUsed-prevUsed>=0?'+':'')+(latestUsed-prevUsed).toLocaleString()+'원';
+  document.getElementById('ck2').textContent = latestBal?latestBal.toLocaleString()+'원':'—';
+  document.getElementById('ck2sub').textContent='공통운영비 가용예산 잔액';
+  document.getElementById('ck3').textContent = latestCafe.toLocaleString()+'원';
+  document.getElementById('ck3sub').textContent='전월 대비 '+(latestCafe-prevCafe>=0?'+':'')+(latestCafe-prevCafe).toLocaleString()+'원';
+  document.getElementById('ck4').textContent = latestAsset?latestAsset.toLocaleString()+'원':'—';
+  document.getElementById('ck4sub').textContent='최근월 Asset 구매 합계';
+
+  const mkX=()=>({grid:{display:false},ticks:{font:{size:11}}});
+  const mkYWon=(max)=>({
+    min:0,max,grid:{color:'rgba(0,0,0,0.05)'},
+    ticks:{font:{size:11},callback:v=>v>=1000000?(v/1000000).toFixed(0)+'M':v>=10000?Math.round(v/10000)+'만':v||''}
+  });
+  const nonZeroMax=(...arrs)=>Math.max(...arrs.map(a=>Array.isArray(a)?Math.max(...a.map(v=>v||0)):0).filter(v=>v>0),1);
+
+  // 1. 조직별 요약 - Asset + OT + 공통운영비 묶음 막대
+  const teamOrgs = Object.keys(costData.teamSummary);
+  document.getElementById('teamSummaryTitle').textContent=`조직별 비용 사용내역 (${mLabels[lastIdx]})`;
+  if(costCharts['teamSummary'])costCharts['teamSummary'].destroy();
+  costCharts['teamSummary'] = new Chart(document.getElementById('teamSummaryChart'),{
+    type:'bar', plugins:[costLabelPlugin],
+    data:{
+      labels:teamOrgs,
+      datasets:[
+        {label:'Asset구매', data:teamOrgs.map(o=>costData.teamSummary[o]?.asset||0), backgroundColor:'#3949ABCC', borderRadius:4, borderSkipped:false},
+        {label:'야근교통비', data:teamOrgs.map(o=>costData.teamSummary[o]?.ot||0), backgroundColor:'#D85A30CC', borderRadius:4, borderSkipped:false},
+        {label:'공통운영비', data:teamOrgs.map(o=>costData.teamSummary[o]?.common||0), backgroundColor:'#1D9E75CC', borderRadius:4, borderSkipped:false},
+      ]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false, layout:{padding:{top:22}},
+      plugins:{
+        legend:{display:true,position:'top',labels:{font:{size:11},boxWidth:12}},
+        costLabel:{},
+        tooltip:{callbacks:{label:c=>c.dataset.label+': '+c.parsed.y.toLocaleString()+'원'}}
+      },
+      scales:{x:mkX(), y:mkYWon(nonZeroMax(...teamOrgs.map(o=>(costData.teamSummary[o]?.asset||0)+(costData.teamSummary[o]?.ot||0)+(costData.teamSummary[o]?.common||0)))*1.25)}
+    }
+  });
+
+  // 2. 야근교통비 팀별 꺾은선
+  const otOrgs=Object.keys(costData.ot);
+  document.getElementById('otCostLg').innerHTML=otOrgs.map(o=>`<div class="li"><div class="ld" style="background:${COST_ORG_COLORS[o]||'#888'}"></div>${o}</div>`).join('');
+  if(costCharts['otCost'])costCharts['otCost'].destroy();
+  costCharts['otCost']=new Chart(document.getElementById('otCostChart'),{
+    type:'line', plugins:[costLabelPlugin],
+    data:{labels:mLabels, datasets:otOrgs.map(org=>({
+      label:org, data:costData.ot[org],
+      borderColor:COST_ORG_COLORS[org]||'#888', backgroundColor:(COST_ORG_COLORS[org]||'#888')+'22',
+      pointBackgroundColor:COST_ORG_COLORS[org]||'#888', pointRadius:4, tension:0.3, borderWidth:2
+    }))},
+    options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:22}},
+      plugins:{legend:{display:false},costLabel:{},tooltip:{callbacks:{label:c=>c.dataset.label+': '+c.parsed.y.toLocaleString()+'원'}}},
+      scales:{x:mkX(),y:mkYWon(nonZeroMax(...Object.values(costData.ot))*1.35||30000)}
+    }
+  });
+
+  // 3. 공통운영비 팀별 꺾은선
+  const commonOrgs=Object.keys(costData.common.byOrg);
+  document.getElementById('commonOrgLg').innerHTML=commonOrgs.map(o=>`<div class="li"><div class="ld" style="background:${COST_ORG_COLORS[o]||'#888'}"></div>${o}</div>`).join('');
+  if(costCharts['commonOrg'])costCharts['commonOrg'].destroy();
+  costCharts['commonOrg']=new Chart(document.getElementById('commonOrgChart'),{
+    type:'line', plugins:[costLabelPlugin],
+    data:{labels:mLabels, datasets:commonOrgs.map(org=>({
+      label:org, data:costData.common.byOrg[org],
+      borderColor:COST_ORG_COLORS[org]||'#888', backgroundColor:(COST_ORG_COLORS[org]||'#888')+'22',
+      pointBackgroundColor:COST_ORG_COLORS[org]||'#888', pointRadius:4, tension:0.3, borderWidth:2
+    }))},
+    options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:22}},
+      plugins:{legend:{display:false},costLabel:{},tooltip:{callbacks:{label:c=>c.dataset.label+': '+c.parsed.y.toLocaleString()+'원'}}},
+      scales:{x:mkX(),y:mkYWon(nonZeroMax(...Object.values(costData.common.byOrg))*1.35||500000)}
+    }
+  });
+
+  // 4. 공통운영비 월별 합계 막대
+  if(costCharts['commonCost'])costCharts['commonCost'].destroy();
+  costCharts['commonCost']=new Chart(document.getElementById('commonCostChart'),{
+    type:'bar', plugins:[costLabelPlugin],
+    data:{labels:mLabels, datasets:[
+      {label:'당월 사용액', data:costData.common.used, backgroundColor:'#3949ABAA', borderRadius:5, borderSkipped:false},
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:22}},
+      plugins:{legend:{display:false},costLabel:{},
+        tooltip:{callbacks:{label:c=>{
+          const row=[c.dataset.label+': '+c.parsed.y.toLocaleString()+'원'];
+          const bal=costData.common.balance[c.dataIndex];
+          if(bal!=null)row.push('잔액: '+bal.toLocaleString()+'원');
+          return row;
+        }}}
+      },
+      scales:{x:mkX(),y:mkYWon(nonZeroMax(costData.common.used,costData.common.budget.map(v=>v||0))*1.25||1000000)}
+    }
+  });
+
+  // 5. Asset 팀별 막대 (최근월)
+  const assetOrgs=Object.keys(costData.asset||{});
+  document.getElementById('assetLg').innerHTML=assetOrgs.filter(o=>(costData.asset[o]||[]).some(v=>v>0))
+    .map(o=>`<div class="li"><div class="ld" style="background:${COST_ORG_COLORS[o]||'#888'}"></div>${o}</div>`).join('');
+  if(costCharts['asset'])costCharts['asset'].destroy();
+  costCharts['asset']=new Chart(document.getElementById('assetChart'),{
+    type:'bar', plugins:[costLabelPlugin],
+    data:{labels:mLabels, datasets:assetOrgs.map(org=>({
+      label:org, data:costData.asset[org],
+      backgroundColor:COST_ORG_COLORS[org]||'#888', borderRadius:4, borderSkipped:false
+    }))},
+    options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:22}},
+      plugins:{
+        legend:{display:true,position:'top',labels:{font:{size:11},boxWidth:12,filter:i=>i.text&&(costData.asset[i.text]||[]).some(v=>v>0)}},
+        costLabel:{},
+        tooltip:{callbacks:{label:c=>c.dataset.label+': '+c.parsed.y.toLocaleString()+'원'}}
+      },
+      scales:{x:mkX(),y:mkYWon(nonZeroMax(...Object.values(costData.asset||{}))*1.25||1000000)}
+    }
+  });
+
+  // 6. 카페테리아 꺾은선
+  const cafeColors={'법인카드 결제':'#1A3A6B','커피(렌탈,원두)':'#D85A30'};
+  if(costCharts['cafeCost'])costCharts['cafeCost'].destroy();
+  costCharts['cafeCost']=new Chart(document.getElementById('cafeCostChart'),{
+    type:'line', plugins:[costLabelPlugin],
+    data:{labels:mLabels, datasets:Object.entries(costData.cafe).map(([cat,vals])=>({
+      label:cat, data:vals,
+      borderColor:cafeColors[cat]||'#888', backgroundColor:(cafeColors[cat]||'#888')+'22',
+      pointBackgroundColor:cafeColors[cat]||'#888', pointRadius:5, tension:0.3, borderWidth:2.5
+    }))},
+    options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:22}},
+      plugins:{
+        legend:{display:true,position:'bottom',labels:{font:{size:11},boxWidth:12}},
+        costLabel:{},
+        tooltip:{callbacks:{label:c=>c.dataset.label+': '+c.parsed.y.toLocaleString()+'원'}}
+      },
+      scales:{x:mkX(),y:mkYWon(nonZeroMax(...Object.values(costData.cafe))*1.3||1500000)}
+    }
+  });
+}
+
+
+/* ═══════════════════════════════════════
+   GitHub용 정적 HTML 내보내기
+   - 현재 집계된 데이터를 HTML 안에 완전 내장
+   - 드래그앤드롭 화면 제거, 결과 화면만 남김
+═══════════════════════════════════════ */
+function exportStaticHtml() {
+  if (!G) { alert('먼저 엑셀 파일을 업로드해주세요.'); return; }
+
+  const btn = document.getElementById('exportHtmlBtn');
+  btn.textContent = '⏳ 생성 중...';
+  btn.disabled = true;
+
+  setTimeout(() => {
+    try {
+      // 현재 HTML 가져오기
+      const src = document.documentElement.outerHTML;
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(src, 'text/html');
+
+      // 1. 드롭 오버레이 완전 제거
+      const overlay = doc.getElementById('dropOverlay');
+      if (overlay) overlay.remove();
+      const globalDrop = doc.getElementById('globalDrop');
+      if (globalDrop) globalDrop.remove();
+      const fileInput = doc.getElementById('fileInput');
+      if (fileInput) fileInput.remove();
+
+      // 2. topbar, tabs, main, footer 항상 보이게
+      ['topbar','tabsBar','mainContent','footerEl'].forEach(id => {
+        const el = doc.getElementById(id);
+        if (el) el.style.display = id === 'topbar' ? 'flex'
+                                 : id === 'mainContent' ? 'block'
+                                 : id === 'footerEl' ? 'block'
+                                 : 'flex';
+      });
+
+      // 3. 업로드 존 미니 숨기기 (업로드 필요 없음)
+      const mini = doc.getElementById('uploadZoneMini');
+      if (mini) mini.style.display = 'none';
+
+      // 4. 현재 집계 데이터를 JS 변수로 직접 주입
+      const { MONTHS, totalArr, orgArr, posArr, orgs, poses, anomaly } = G;
+
+      // 5. 비용 데이터 직렬화
+      const costSerialized = JSON.stringify(costData);
+      const costMonthsSerialized = JSON.stringify(COST_MONTHS);
+
+      // 6. Summary & Reason 로컬스토리지 데이터 포함
+      const summaries = loadSummaries();
+      const reasons   = loadReasons();
+
+      // 7. 정적 데이터 주입 스크립트 생성
+      const staticScript = doc.createElement('script');
+      staticScript.id = 'static-data-injection';
+      staticScript.textContent = `
+/* 정적 내보내기: 집계 데이터 내장 */
+window.__STATIC_MODE__ = true;
+window.__STATIC_DATA__ = ${JSON.stringify({
+  MONTHS, totalArr, orgArr, posArr, orgs, poses,
+  anomaly: anomaly.map(a => ({...a, 날짜: a.날짜?.toISOString?.() || String(a.날짜)}))
+})};
+window.__COST_DATA__   = ${costSerialized};
+window.__COST_MONTHS__ = ${costMonthsSerialized};
+window.__SUMMARIES__   = ${JSON.stringify(summaries)};
+window.__REASONS__     = ${JSON.stringify(reasons)};
+`;
+      doc.head.appendChild(staticScript);
+
+      // 8. 정적 모드 초기화 스크립트 추가
+      const initScript = doc.createElement('script');
+      initScript.textContent = `
+window.addEventListener('DOMContentLoaded', function() {
+  if (!window.__STATIC_MODE__) return;
+
+  // 드래그앤드롭 이벤트 무력화
+  ['dragenter','dragleave','dragover','drop'].forEach(ev =>
+    document.addEventListener(ev, e => e.preventDefault(), true)
+  );
+
+  // 저장된 사유/요약 복원
+  if (window.__REASONS__)   localStorage.setItem('hr_reasons_v3',   JSON.stringify(window.__REASONS__));
+  if (window.__SUMMARIES__) localStorage.setItem('hr_summary_v2', JSON.stringify(window.__SUMMARIES__));
+
+  // 비용 데이터 복원
+  if (window.__COST_DATA__) {
+    Object.assign(costData, window.__COST_DATA__);
+    while(COST_MONTHS.length) COST_MONTHS.pop();
+    (window.__COST_MONTHS__||[]).forEach(m => COST_MONTHS.push(m));
+  }
+
+  // 대시보드 렌더링
+  const d = window.__STATIC_DATA__;
+  if (!d) return;
+  d.anomaly = d.anomaly.map(a => ({...a, 날짜: new Date(a.날짜)}));
+  renderDashboard(d, '저장된 대시보드');
+});
+`;
+      doc.body.appendChild(initScript);
+
+      // 9. HTML 문자열로 직렬화
+      const finalHtml = '<!DOCTYPE html>\n' + doc.documentElement.outerHTML;
+
+      // 10. 다운로드
+      const blob = new Blob([finalHtml], { type: 'text/html;charset=utf-8' });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href     = url;
+      a.download = 'index.html';
+      a.click();
+      URL.revokeObjectURL(url);
+
+      btn.textContent = '✓ 저장 완료!';
+      btn.style.background = '#3949AB';
+      setTimeout(() => {
+        btn.textContent = '⬇ GitHub용 HTML 저장';
+        btn.style.background = '#1D9E75';
+        btn.disabled = false;
+      }, 2000);
+
+    } catch(err) {
+      alert('저장 중 오류: ' + err.message);
+      btn.textContent = '⬇ GitHub용 HTML 저장';
+      btn.disabled = false;
+    }
+  }, 100);
+}
+
+</script>
+
+
+<script>
+window.addEventListener('DOMContentLoaded', function() {
+  if (!window.__STATIC_MODE__) return;
+
+  // 드래그앤드롭 이벤트 무력화
+  ['dragenter','dragleave','dragover','drop'].forEach(ev =>
+    document.addEventListener(ev, e => e.preventDefault(), true)
+  );
+
+  // 저장된 사유/요약 복원
+  if (window.__REASONS__)   localStorage.setItem('hr_reasons_v3',   JSON.stringify(window.__REASONS__));
+  if (window.__SUMMARIES__) localStorage.setItem('hr_summary_v2', JSON.stringify(window.__SUMMARIES__));
+
+  // 비용 데이터 복원
+  if (window.__COST_DATA__) {
+    Object.assign(costData, window.__COST_DATA__);
+    while(COST_MONTHS.length) COST_MONTHS.pop();
+    (window.__COST_MONTHS__||[]).forEach(m => COST_MONTHS.push(m));
+  }
+
+  // 대시보드 렌더링
+  const d = window.__STATIC_DATA__;
+  if (!d) return;
+  d.anomaly = d.anomaly.map(a => ({...a, 날짜: new Date(a.날짜)}));
+  renderDashboard(d, '저장된 대시보드');
+});
+</script></body></html>
