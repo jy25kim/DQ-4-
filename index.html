@@ -405,11 +405,7 @@ tbody td{padding:8px 10px;color:#1A1A2E;vertical-align:middle;white-space:nowrap
     <!-- 조직별 비용 요약 (최근월) -->
     <div class="full-card">
       <div class="card-title" id="teamSummaryTitle">조직별 비용 사용내역 (최근월)</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
-        <div>
-          <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:8px">Asset 구매</div>
-          <div style="position:relative;height:200px"><canvas id="teamSummaryAssetChart"></canvas></div>
-        </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
         <div>
           <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:8px">야근교통비</div>
           <div style="position:relative;height:200px"><canvas id="teamSummaryOtChart"></canvas></div>
@@ -462,7 +458,7 @@ const EXCLUDE = ['딜로퀘스트','김종율','이태성'];
 const HOLIDAY_TYPES = ['쉬는날','주휴일','휴무일','주휴일, 쉬는날'];
 const EARLY_MONTHS = ['2025-12','2026-01']; // 주기연장(법정근로 내) 사용 기간
 const VAC_TYPES = ['연차','입사휴가'];
-const ORG_COLORS = {'아트팀':'#1D9E75','아트앤테크팀':'#8B5CF6','기획팀':'#D85A30','프로그램팀':'#378ADD','경영지원팀':'#888780'};
+const ORG_COLORS = {'아트팀':'#1D9E75','아트앤테크팀':'#8B5CF6','기획팀':'#D85A30','프로그램팀':'#378ADD','사운드팀':'#E67E22','경영지원팀':'#888780'};
 const ORG_CHIP = {'아트팀':'ca','아트앤테크팀':'cb','기획팀':'cc','프로그램팀':'cd','경영지원팀':'ce'};
 const POS_COLORS = {'팀장':'#D85A30','팀원':'#378ADD'};
 const POS_CHIP = {'팀장':'cl','팀원':'cm'};
@@ -1118,7 +1114,7 @@ async function exportReasons() {
 /* ═══════════════════════════════════════
    비용 현황 데이터 & 차트
 ═══════════════════════════════════════ */
-const COST_MONTHS = ['25.12월','26.1월','26.2월','26.3월','26.4월'];
+const COST_MONTHS = ['25.12월','26.1월','26.2월','26.3월','26.4월','26.5월'];
 
 /* 균등 Y축 헬퍼 (전역) */
 function niceStep(maxVal) {
@@ -1149,43 +1145,47 @@ function mkYNice(maxVal, fmtFn) {
 // 비용 데이터 (엑셀 2번째 시트 파싱)
 let costData = {
   ot: {
-    '기획팀':     [0,0,0,0,0],
-    '아트앤테크팀':[0,0,0,0,0],
-    '아트팀':     [0,0,19600,0,0],
-    '프로그램팀':  [0,0,0,0,0],
-    '경영지원팀':  [0,0,0,0,0],
+    '기획팀':     [0,0,0,0,0,0],
+    '아트앤테크팀':[0,0,0,0,0,0],
+    '아트팀':     [0,0,19600,0,0,0],
+    '프로그램팀':  [0,0,0,0,0,0],
+    '사운드팀':    [0,0,0,0,0,0],
+    '경영지원팀':  [0,0,0,0,0,36300],
   },
   common: {
-    used:   [230000,0,813129,167272,712739],
-    budget: [null,980000,2380000,3036871,4269599],
-    balance:[null,980000,1566871,2869599,3556860],
+    used:   [230000,0,813129,167272,712739,858434],
+    budget: [null,980000,2380000,3036871,4269599,4382460],
+    balance:[null,980000,1566871,2869599,3556860,3524026],
     byOrg: {
-      '기획팀':     [0,0,240911,167272,210914],
-      '아트앤테크팀':[0,0,0,0,0],
-      '아트팀':     [120000,0,258181,0,501825],
-      '프로그램팀':  [110000,0,248182,0,0],
-      '경영지원팀':  [0,0,65855,0,0],
+      '기획팀':     [0,0,240911,167272,210914,106062],
+      '아트앤테크팀':[0,0,0,0,0,106062],
+      '아트팀':     [120000,0,258181,0,501825,106062],
+      '프로그램팀':  [110000,0,248182,0,0,444698],
+      '사운드팀':    [0,0,0,0,0,106062],
+      '경영지원팀':  [0,0,65855,0,0,95546],
     }
   },
   cafe: {
-    '법인카드 결제': [0,1234395,678137,817146,426799],
-    '커피(렌탈,원두)':[0,1090550,0,1111100,0],
+    '법인카드 결제': [0,1234395,678137,817146,426799,241688],
+    '커피(렌탈,원두)':[0,1090550,0,1111100,0,0],
   },
   asset: {
-    '기획팀':     [0,0,0,0,0],
-    '아트앤테크팀':[0,0,0,0,0],
-    '아트팀':     [0,0,0,0,0],
-    '프로그램팀':  [0,0,0,0,19950000],
-    '경영지원팀':  [0,0,0,0,2755400],
-    '기타':       [0,0,0,0,7920400],
+    '기획팀':     [0,0,0,0,0,0],
+    '아트앤테크팀':[0,0,0,0,0,0],
+    '아트팀':     [0,0,0,0,0,0],
+    '프로그램팀':  [0,0,0,0,19950000,0],
+    '사운드팀':    [0,0,0,0,0,0],
+    '경영지원팀':  [0,0,0,0,2755400,0],
+    '기타':       [0,0,0,0,7920400,0],
   },
   teamSummary: {
-    '기획팀':     {asset:0,  ot:0, common:210914},
-    '아트앤테크팀':{asset:0,  ot:0, common:0},
-    '아트팀':     {asset:0,  ot:0, common:501825},
-    '프로그램팀':  {asset:19950000, ot:0, common:0},
-    '경영지원팀':  {asset:2755400,  ot:0, common:0},
-    '기타':       {asset:7920400,  ot:0, common:0},
+    '기획팀':     {asset:0,  ot:0, common:106062},
+    '아트앤테크팀':{asset:0,  ot:0, common:106062},
+    '아트팀':     {asset:0,  ot:0, common:106062},
+    '프로그램팀':  {asset:0,  ot:0, common:444698},
+    '사운드팀':    {asset:0,  ot:0, common:106062},
+    '경영지원팀':  {asset:0,  ot:36300, common:95546},
+    '기타':       {asset:0,  ot:0, common:0},
   }
 };
 
@@ -1278,7 +1278,7 @@ function wonFull(v) { return v ? v.toLocaleString() + '원' : '—'; }
 
 const COST_ORG_COLORS = {
   '기획팀':'#D85A30','아트앤테크팀':'#8B5CF6','아트팀':'#1D9E75',
-  '프로그램팀':'#378ADD','경영지원팀':'#888780','기타':'#BBBBBB'
+  '프로그램팀':'#378ADD','사운드팀':'#E67E22','경영지원팀':'#888780','기타':'#BBBBBB'
 };
 
 let costChartsInited = false;
@@ -1371,22 +1371,6 @@ function renderCostCharts() {
   const teamOrgs = Object.keys(costData.teamSummary);
   document.getElementById('teamSummaryTitle').textContent=`조직별 비용 사용내역 (${mLabels[lastIdx]})`;
 
-  // 1-a. Asset 구매
-  if(costCharts['teamSummaryAsset'])costCharts['teamSummaryAsset'].destroy();
-  costCharts['teamSummaryAsset'] = new Chart(document.getElementById('teamSummaryAssetChart'),{
-    type:'bar', plugins:[costLabelPlugin],
-    data:{
-      labels:teamOrgs,
-      datasets:[{label:'Asset구매', data:teamOrgs.map(o=>costData.teamSummary[o]?.asset||0),
-        backgroundColor:'#3949ABCC', borderRadius:4, borderSkipped:false}]
-    },
-    options:{
-      responsive:true, maintainAspectRatio:false, layout:{padding:{top:22}},
-      plugins:{legend:{display:false},costLabel:{},tooltip:{callbacks:{label:c=>c.dataset.label+': '+c.parsed.y.toLocaleString()+'원'}}},
-      scales:{x:mkX(), y:mkYWon(nonZeroMax(teamOrgs.map(o=>costData.teamSummary[o]?.asset||0))*1.3||1000000)}
-    }
-  });
-
   // 1-b. 야근교통비 (단독)
   if(costCharts['teamSummaryOt'])costCharts['teamSummaryOt'].destroy();
   costCharts['teamSummaryOt'] = new Chart(document.getElementById('teamSummaryOtChart'),{
@@ -1415,10 +1399,7 @@ function renderCostCharts() {
     options:{
       responsive:true, maintainAspectRatio:false, layout:{padding:{top:20}},
       plugins:{legend:{display:false},costLabel:{},tooltip:{callbacks:{label:c=>c.parsed.y.toLocaleString()+'원'}}},
-      scales:{x:mkX(), y:{min:0, max:1500000,
-        grid:{color:'rgba(0,0,0,0.05)'},
-        ticks:{font:{size:12}, stepSize:500000, callback:v=>v===0?'0':v===500000?'50만':v===1000000?'1M':v===1500000?'1.5M':null}
-      }}
+      scales:{x:mkX(), y:mkYNice((nonZeroMax(...Object.values(costData.common.byOrg))||500000)*1.25)}
     }
   });
 
@@ -1539,7 +1520,7 @@ function exportData() {
 let _anomalyCharts = {};
 
 function renderAnomalySummaryCharts(anomaly) {
-  const MONTHS_ORDER = ['2025-12','2026-01','2026-02','2026-03','2026-04'];
+  const MONTHS_ORDER = ['2025-12','2026-01','2026-02','2026-03','2026-04','2026-05'];
 
   // 월별 건수
   const monthCount = {};
@@ -1737,7 +1718,7 @@ function openEmpModal(name) {
     </div>`;
 
   // 월별 미니 차트
-  const MONTHS_ORDER = ['2025-12','2026-01','2026-02','2026-03','2026-04'];
+  const MONTHS_ORDER = ['2025-12','2026-01','2026-02','2026-03','2026-04','2026-05'];
   const monthCount = {};
   MONTHS_ORDER.forEach(m=>monthCount[m]=0);
   empRows.forEach(r=>{ if(monthCount[r.월]!==undefined) monthCount[r.월]++; else monthCount[r.월]=1; });
