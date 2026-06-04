@@ -1047,6 +1047,13 @@ async function loadSummaryForMonth(m) {
   const label = sm.options[sm.selectedIndex]?.text || mLabel(m);
   document.getElementById('summaryStatus').textContent = saved ? `${label} 저장됨` : '저장되지 않음';
   document.getElementById('summaryStatus').style.color = saved ? '#1D9E75' : '#BEC5D4';
+  // 뷰어 모드: 편집 UI 숨김
+  if (window._viewerMode) {
+    document.getElementById('summaryText').readOnly = true;
+    document.getElementById('summaryText').style.background = '#F5F6FA';
+    document.getElementById('summarySaveBtn').style.display = 'none';
+    document.getElementById('summaryStatus').textContent = saved ? `${label} 저장됨` : '작성된 요약 없음';
+  }
 }
 document.getElementById('summaryMonth').addEventListener('change', async function () { await loadSummaryForMonth(this.value); });
 
@@ -1755,10 +1762,10 @@ function openEmpModal(name) {
       <td class="ctr">${vBadge}</td>
       <td><div style="display:flex;align-items:center;gap:3px">
         <textarea class="modal-reason-input ${saved?'saved':''}" id="mreason_${key}" rows="1"
-          placeholder="사유..."
-          onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();saveModalReason('${key}')}"
+          placeholder="${window._viewerMode ? (saved ? '' : '사유 없음') : '사유...'}"
+          ${window._viewerMode ? 'readonly style="background:#F5F6FA;cursor:default"' : `onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();saveModalReason('${key}')}"`}
         >${saved}</textarea>
-        <button class="modal-save-btn" onclick="saveModalReason('${key}')">저장</button>
+        ${window._viewerMode ? '' : `<button class="modal-save-btn" onclick="saveModalReason('${key}')">저장</button>`}
       </div></td>
     </tr>`;
   }).join('');
@@ -1995,6 +2002,7 @@ async function tryLoadDataJson() {
     if (!res.ok) return;
     const p = await res.json();
     await initStorage();
+    window._viewerMode = true; // 뷰어 모드: 저장/편집 UI 숨김
     if (p.REASONS)   { _reasons = p.REASONS;   localStorage.setItem('hr_reasons_v3', JSON.stringify(_reasons)); }
     if (p.SUMMARIES) { _summaries = p.SUMMARIES; localStorage.setItem('hr_summary_v2', JSON.stringify(_summaries)); }
     if (p.COST) {
