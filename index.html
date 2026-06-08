@@ -1211,9 +1211,9 @@ let costData = {
     '경영지원팀':  [0,0,0,0,0,36300],
   },
   common: {
-    used:   [230000,0,813129,167272,712739,858434],
-    budget: [null,980000,2380000,3036871,4269599,4382460],
-    balance:[null,980000,1566871,2869599,3556860,3524026],
+    used:   [230000,0,813129,167272,712739,964492],
+    budget: [null,980000,2380000,3036871,4269599,5166860],
+    balance:[null,980000,1566871,2869599,3556860,4202368],
     byOrg: {
       '기획팀':     [0,0,240911,167272,210914,106062],
       '아트앤테크팀':[0,0,0,0,0,106062],
@@ -2059,7 +2059,9 @@ function renderOtAllow() {
 
 async function tryLoadDataJson() {
   try {
-    const res = await fetch('./data.json');
+    const m = new URLSearchParams(location.search).get('m');
+    const fileName = m ? `./data_${m}.json` : './data.json';
+    const res = await fetch(fileName);
     if (!res.ok) return;
     const p = await res.json();
     await initStorage();
