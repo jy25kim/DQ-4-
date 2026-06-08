@@ -1278,15 +1278,28 @@ function parseCostSheet(wb) {
     // 공통운영비 섹션
     if (label === '2. 공통운영비') {
       costData.common.byOrg = {};
+      let rawUsed = null, rawBudget = null, rawBalance = null;
       for (let r2 = ri+2; r2 < raw.length; r2++) {
         const org = String(raw[r2][1] || '').trim();
         if (!org) break;
         const vals = raw[r2].slice(2, 2+mLabels.length).map(v => Number(v)||0);
-        if (org === '월초 가용예산') costData.common.budget = vals.map(v => v||null);
-        else if (org === '당월 사용액') costData.common.used = vals;
-        else if (org === '잔액') costData.common.balance = vals;
+        if (org === '월초 가용예산') rawBudget = vals.map(v => v||null);
+        else if (org === '당월 사용액') rawUsed = vals;
+        else if (org === '잔액') rawBalance = vals;
         else costData.common.byOrg[org] = vals;
       }
+      // 수식 셀은 SheetJS가 0으로 읽을 수 있으므로, byOrg 합산으로 used를 직접 계산
+      const nMonths = mLabels.length;
+      const calcUsed = Array.from({length: nMonths}, (_, i) =>
+        Object.values(costData.common.byOrg).reduce((s, arr) => s + (arr[i]||0), 0)
+      );
+      // rawUsed 합계가 calcUsed와 다르면(수식 미계산) calcUsed 사용
+      const usedOk = rawUsed && rawUsed.some(v => v > 0) &&
+        Math.abs(rawUsed.reduce((a,b)=>a+b,0) - calcUsed.reduce((a,b)=>a+b,0)) < 1;
+      costData.common.used = usedOk ? rawUsed : calcUsed;
+      // budget/balance는 수식이므로 값이 있으면 사용, 없으면 하드코딩 유지
+      if (rawBudget && rawBudget.some(v => v)) costData.common.budget = rawBudget;
+      if (rawBalance && rawBalance.some(v => v)) costData.common.balance = rawBalance;
     }
 
     // 카페테리아 섹션
